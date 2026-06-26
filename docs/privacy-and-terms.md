@@ -6,7 +6,7 @@ This version stores time tracking data only in the user's browser through `local
 
 The app does not send session data to a server, does not require login, and does not include analytics or third-party tracking.
 
-Users are responsible for exporting backups if they need long-term retention. Clearing browser data, using private browsing, or changing devices can remove local records.
+Users are responsible for saving offline backup files if they need long-term retention. Clearing browser data, using private browsing, or changing devices can remove local records.
 
 ## Optional Future Accounts
 

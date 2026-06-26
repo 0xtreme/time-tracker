@@ -141,15 +141,20 @@ function render() {
   app.innerHTML = `
     <main class="shell">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">Local-first work log</p>
+        <div class="brand">
+          ${renderBrandIcon()}
           <h1>Time Session Tracker</h1>
         </div>
         <div class="topbar__stats" aria-label="Current tracker summary">
           <span>${activeSessions.length} running</span>
           <span><strong data-total-today>${formatDuration(totalToday)}</strong> today</span>
-          <button class="theme-toggle" data-action="toggle-theme" aria-label="Switch color theme">
-            ${state.settings.theme === "dark" ? "Light" : "Dark"}
+          <button
+            class="theme-toggle"
+            data-action="toggle-theme"
+            aria-label="${state.settings.theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}"
+            title="${state.settings.theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}"
+          >
+            ${renderThemeIcon()}
           </button>
         </div>
       </header>
@@ -185,9 +190,9 @@ function render() {
               <button data-action="end-all" ${activeSessions.length ? "" : "disabled"}>End all</button>
               <button data-action="copy-local" ${filteredSessions().length ? "" : "disabled"}>Copy local</button>
               <button data-action="copy-utc" ${filteredSessions().length ? "" : "disabled"}>Copy UTC</button>
-              <button data-action="export-json">Export</button>
-              <label class="file-button">
-                Import
+              <button data-action="export-json" title="Save an offline JSON backup file">Save file</button>
+              <label class="file-button" title="Upload an offline JSON backup file">
+                Upload file
                 <input type="file" data-action="import-json" accept="application/json" />
               </label>
             </div>
@@ -212,6 +217,34 @@ function render() {
 
   bindEvents();
   renderTimerValues();
+}
+
+function renderBrandIcon() {
+  return `
+    <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
+      <rect width="64" height="64" rx="14"></rect>
+      <path d="M32 13a19 19 0 1 0 0 38 19 19 0 0 0 0-38Zm0 5a14 14 0 1 1 0 28 14 14 0 0 1 0-28Z"></path>
+      <path d="M32 22v11l8 5"></path>
+      <path d="M15 49h34"></path>
+    </svg>
+  `;
+}
+
+function renderThemeIcon() {
+  if (state.settings.theme === "dark") {
+    return `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"></circle>
+        <path d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77"></path>
+      </svg>
+    `;
+  }
+
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M21 12.8A8.3 8.3 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8Z"></path>
+    </svg>
+  `;
 }
 
 function renderProjectCard(project: Project) {

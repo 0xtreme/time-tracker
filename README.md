@@ -21,7 +21,7 @@ Use Vercel later if the app adds authenticated sync, server-side storage, team s
 - Local and UTC timestamps for each work window.
 - Editable session start/end times and notes.
 - Copy visible sessions as local-time or UTC tab-separated text for project tools and spreadsheets.
-- Export/import JSON backups.
+- Save and restore offline JSON backup files from the user's machine.
 - Browser-close recovery for timers left running.
 
 ## Browser Storage
@@ -29,6 +29,8 @@ Use Vercel later if the app adds authenticated sync, server-side storage, team s
 Session data is saved to `localStorage` in the browser. Running timers are stored as timestamps, so a timer can be reconstructed after reopening the app. If the tab was closed or inactive for a long gap, the app asks whether to keep the timer running, end it at the last browser activity, or end it now.
 
 Private/incognito windows and browser data clearing can remove local data. Export JSON backups when records matter.
+
+Use **Save file** to download an offline JSON backup and **Upload file** to load that file back into the app. The browser cannot reliably save or upload a file automatically when the tab closes, so backup is an explicit user action.
 
 ## Development
 

@@ -20,6 +20,8 @@ The app stores state in `localStorage` under `time-session-tracker:v1`.
 
 Running sessions are persisted immediately when started. The app does not need JavaScript to keep executing while the tab is closed; it calculates elapsed time from the stored start timestamp when the app is opened again.
 
+Users can save an offline JSON backup file and restore from that file later. This is intentionally separate from cloud sync and does not require a user account or database.
+
 ## Timer Modes
 
 Single-active mode is the default. Starting a project ends any currently running sessions at the same timestamp, creating clean non-overlapping work windows.

@@ -19,3 +19,5 @@ Private browsing modes may delete data when the private session ends. Safari and
 ## Practical Guidance
 
 Use a normal browser profile for real records. Export a JSON backup before clearing browser data, switching machines, or relying on the log for client or payroll submission.
+
+Browsers require user interaction for local file save and restore. The app can provide explicit backup and restore buttons, but it cannot reliably write to or upload a user file automatically when the window closes.
