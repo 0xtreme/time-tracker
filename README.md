@@ -14,11 +14,13 @@ Use Vercel later if the app adds authenticated sync, server-side storage, team s
 
 - Create and rename projects.
 - Start and end project sessions.
+- Pause and resume project work with clean session windows.
+- Backdate a running session when the user forgot to pause on time.
 - Single-active mode: starting one project automatically ends the current running session.
 - Parallel mode: multiple project sessions can run at the same time.
 - Local and UTC timestamps for each work window.
 - Editable session start/end times and notes.
-- Copy visible sessions as tab-separated text for project tools and spreadsheets.
+- Copy visible sessions as local-time or UTC tab-separated text for project tools and spreadsheets.
 - Export/import JSON backups.
 - Browser-close recovery for timers left running.
 

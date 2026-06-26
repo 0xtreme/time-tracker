@@ -26,6 +26,12 @@ Single-active mode is the default. Starting a project ends any currently running
 
 Parallel mode allows multiple sessions to run at once. This supports cases where the user intentionally needs overlapping project windows.
 
+## Pause and Correction
+
+Pause closes the active session by setting its end timestamp. Resume creates a new session for the same project. This keeps the exported log as a clear list of start/end work windows instead of hiding break time inside a derived paused-duration value.
+
+If a user forgets to pause, the active session can be backdated by entering how many minutes ago it should have ended. Completed logs can also be corrected by editing session start and end fields directly.
+
 ## Recovery
 
 The app records `lastSeenAt` on normal interactions, visibility changes, and a heartbeat. If a running session exists and the last browser activity is older than the configured threshold, a recovery banner is shown.

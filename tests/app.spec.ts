@@ -19,14 +19,18 @@ test("records clean sessions when switching projects in single-active mode", asy
 
   await expect(projectTwo.getByText("running")).toBeVisible();
   await expect(projectOne.getByText("1 sessions")).toBeVisible();
-  await expect(page.locator(".session-row").filter({ hasText: "Running" })).toHaveCount(1);
+  await expect(page.locator(".session-card").filter({ hasText: "Running" })).toHaveCount(1);
 
   await page.locator(".note-input").first().fill("Waiting on review");
-  await page.getByRole("button", { name: "Copy TSV" }).click();
+  await page.getByRole("button", { name: "Copy local" }).click();
 
-  const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
-  expect(clipboardText).toContain("Project\tLocal Start\tLocal End\tUTC Start\tUTC End\tDuration\tNote");
-  expect(clipboardText).toContain("Project 1");
-  expect(clipboardText).toContain("Project 2");
-  expect(clipboardText).toContain("Waiting on review");
+  const localClipboardText = await page.evaluate(() => navigator.clipboard.readText());
+  expect(localClipboardText).toContain("Project\tStart\tEnd\tDuration\tNote");
+  expect(localClipboardText).toContain("Project 1");
+  expect(localClipboardText).toContain("Project 2");
+  expect(localClipboardText).toContain("Waiting on review");
+
+  await page.getByRole("button", { name: "Copy UTC" }).click();
+  const utcClipboardText = await page.evaluate(() => navigator.clipboard.readText());
+  expect(utcClipboardText).toContain("UTC");
 });

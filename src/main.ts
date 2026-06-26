@@ -1,6 +1,8 @@
 import "./styles.css";
 
 type TimerMode = "exclusive" | "parallel";
+type Theme = "light" | "dark";
+type CopyMode = "local" | "utc";
 
 type Project = {
   id: string;
@@ -21,6 +23,7 @@ type WorkSession = {
 type Settings = {
   timerMode: TimerMode;
   staleAfterMinutes: number;
+  theme: Theme;
 };
 
 type AppState = {
@@ -85,6 +88,7 @@ function loadState(): AppState {
       settings: {
         timerMode: parsed.settings?.timerMode === "parallel" ? "parallel" : "exclusive",
         staleAfterMinutes: Number(parsed.settings?.staleAfterMinutes) || 15,
+        theme: parsed.settings?.theme === "dark" ? "dark" : "light",
       },
       lastSeenAt: parsed.lastSeenAt || nowIso(),
     };
@@ -107,6 +111,7 @@ function createInitialState(): AppState {
     settings: {
       timerMode: "exclusive",
       staleAfterMinutes: 15,
+      theme: "light",
     },
     lastSeenAt: createdAt,
   };
@@ -127,6 +132,7 @@ function touchLastSeen() {
 }
 
 function render() {
+  document.documentElement.dataset.theme = state.settings.theme;
   const activeSessions = getActiveSessions();
   const totalToday = state.sessions
     .filter((session) => isSameLocalDay(session.startAt, nowIso()))
@@ -141,7 +147,10 @@ function render() {
         </div>
         <div class="topbar__stats" aria-label="Current tracker summary">
           <span>${activeSessions.length} running</span>
-          <span>${formatDuration(totalToday)} today</span>
+          <span><strong data-total-today>${formatDuration(totalToday)}</strong> today</span>
+          <button class="theme-toggle" data-action="toggle-theme" aria-label="Switch color theme">
+            ${state.settings.theme === "dark" ? "Light" : "Dark"}
+          </button>
         </div>
       </header>
 
@@ -174,7 +183,8 @@ function render() {
             </div>
             <div class="toolbar-actions">
               <button data-action="end-all" ${activeSessions.length ? "" : "disabled"}>End all</button>
-              <button data-action="copy-tsv" ${state.sessions.length ? "" : "disabled"}>Copy TSV</button>
+              <button data-action="copy-local" ${filteredSessions().length ? "" : "disabled"}>Copy local</button>
+              <button data-action="copy-utc" ${filteredSessions().length ? "" : "disabled"}>Copy UTC</button>
               <button data-action="export-json">Export</button>
               <label class="file-button">
                 Import
@@ -197,26 +207,6 @@ function render() {
           </div>
         </section>
       </section>
-
-      <section class="support">
-        <details>
-          <summary>Privacy, terms, and browser behavior</summary>
-          <div class="support-grid">
-            <article>
-              <h3>Storage</h3>
-              <p>Data is stored in this browser using localStorage. There is no server account, database, or third-party sync in this version.</p>
-            </article>
-            <article>
-              <h3>Closed windows</h3>
-              <p>Running sessions are saved as timestamps. If the tab closes, elapsed time is reconstructed when the app reopens. A long gap prompts a recovery choice.</p>
-            </article>
-            <article>
-              <h3>Terms</h3>
-              <p>This tool is provided as-is for manual time records. Review copied times before submitting them to payroll, client, or project systems.</p>
-            </article>
-          </div>
-        </details>
-      </section>
     </main>
   `;
 
@@ -226,6 +216,7 @@ function render() {
 
 function renderProjectCard(project: Project) {
   const active = state.sessions.find((session) => session.projectId === project.id && !session.endAt);
+  const hasSessions = countProjectSessions(project.id) > 0;
   const completedMs = state.sessions
     .filter((session) => session.projectId === project.id)
     .reduce((sum, session) => sum + sessionDurationMs(session), 0);
@@ -241,9 +232,10 @@ function renderProjectCard(project: Project) {
         <span>${active ? "running" : `${countProjectSessions(project.id)} sessions`}</span>
       </div>
       <div class="project-actions">
-        <button class="primary" data-action="${active ? "stop-project" : "start-project"}" data-project-id="${project.id}">
-          ${active ? "End session" : "Start"}
+        <button class="primary" data-action="${active ? "pause-project" : "start-project"}" data-project-id="${project.id}">
+          ${active ? "Pause" : hasSessions ? "Resume" : "Start"}
         </button>
+        <button data-action="backdate-project" data-project-id="${project.id}" ${active ? "" : "disabled"}>Backdate</button>
         <button data-action="quick-note" data-project-id="${project.id}" ${active ? "" : "disabled"}>Note</button>
         <button class="ghost" data-action="archive-project" data-project-id="${project.id}" ${active ? "disabled" : ""}>Archive</button>
       </div>
@@ -292,17 +284,7 @@ function renderSessions() {
   }
 
   return `
-    <div class="session-table" role="table" aria-label="Work sessions">
-      <div class="session-row session-row--head" role="row">
-        <span>Project</span>
-        <span>Local start</span>
-        <span>Local end</span>
-        <span>UTC start</span>
-        <span>UTC end</span>
-        <span>Duration</span>
-        <span>Note</span>
-        <span></span>
-      </div>
+    <div class="session-list" aria-label="Work sessions">
       ${sessions.map(renderSessionRow).join("")}
     </div>
   `;
@@ -312,27 +294,47 @@ function renderSessionRow(session: WorkSession) {
   const project = getProject(session.projectId);
   const endValue = session.endAt ? toLocalInputValue(session.endAt) : "";
   const duration = sessionDurationMs(session);
+  const status = session.endAt ? "Completed" : "Running";
 
   return `
-    <div class="session-row" role="row">
-      <span class="project-pill" style="--accent:${project?.color || "#475569"}">${escapeHtml(project?.name || "Deleted project")}</span>
-      <label>
-        <span class="sr-only">Local start</span>
-        <input type="datetime-local" data-action="edit-session-start" data-session-id="${session.id}" value="${toLocalInputValue(session.startAt)}" />
-      </label>
-      <label>
-        <span class="sr-only">Local end</span>
-        <input type="datetime-local" data-action="edit-session-end" data-session-id="${session.id}" value="${endValue}" />
-      </label>
-      <span>${formatUtcDateTime(session.startAt)}</span>
-      <span>${session.endAt ? formatUtcDateTime(session.endAt) : "Running"}</span>
-      <strong data-session-duration="${session.id}">${formatDuration(duration)}</strong>
-      <input class="note-input" data-action="edit-note" data-session-id="${session.id}" value="${escapeAttribute(session.note)}" placeholder="Optional note" />
-      <div class="row-actions">
-        ${session.endAt ? "" : `<button data-action="stop-session" data-session-id="${session.id}">End</button>`}
-        <button class="ghost" data-action="delete-session" data-session-id="${session.id}">Delete</button>
+    <article class="session-card">
+      <div class="session-card__head">
+        <span class="project-pill" style="--accent:${project?.color || "#475569"}">${escapeHtml(project?.name || "Deleted project")}</span>
+        <div class="session-summary">
+          <span class="session-status ${session.endAt ? "" : "is-running"}">${status}</span>
+          <strong data-session-duration="${session.id}">${formatDuration(duration)}</strong>
+        </div>
+        <div class="row-actions">
+          ${session.endAt ? "" : `
+            <button data-action="backdate-session" data-session-id="${session.id}">Backdate</button>
+            <button data-action="stop-session" data-session-id="${session.id}">Pause</button>
+          `}
+          <button class="ghost" data-action="delete-session" data-session-id="${session.id}">Delete</button>
+        </div>
       </div>
-    </div>
+      <div class="time-grid">
+        <label class="time-field">
+          <span>Local start</span>
+          <input type="datetime-local" data-action="edit-session-start" data-session-id="${session.id}" value="${toLocalInputValue(session.startAt)}" />
+        </label>
+        <label class="time-field">
+          <span>Local end</span>
+          <input type="datetime-local" data-action="edit-session-end" data-session-id="${session.id}" value="${endValue}" />
+        </label>
+        <div class="time-field">
+          <span>UTC start</span>
+          <output>${formatUtcDateTime(session.startAt)}</output>
+        </div>
+        <div class="time-field">
+          <span>UTC end</span>
+          <output>${session.endAt ? formatUtcDateTime(session.endAt) : "Running"}</output>
+        </div>
+      </div>
+      <label class="note-field">
+        <span>Note</span>
+        <input class="note-input" data-action="edit-note" data-session-id="${session.id}" value="${escapeAttribute(session.note)}" placeholder="Optional note" />
+      </label>
+    </article>
   `;
 }
 
@@ -375,14 +377,20 @@ function handleClick(event: Event) {
     case "start-project":
       if (projectId) startProject(projectId);
       break;
-    case "stop-project":
+    case "pause-project":
       if (projectId) stopProject(projectId);
+      break;
+    case "backdate-project":
+      if (projectId) backdateProject(projectId);
       break;
     case "quick-note":
       if (projectId) addQuickNote(projectId);
       break;
     case "set-mode":
       setMode(target.dataset.mode === "parallel" ? "parallel" : "exclusive");
+      break;
+    case "toggle-theme":
+      toggleTheme();
       break;
     case "select-project":
       selectedProjectId = projectId || "all";
@@ -391,14 +399,20 @@ function handleClick(event: Event) {
     case "end-all":
       endAll(nowIso());
       break;
-    case "copy-tsv":
-      void copyTsv();
+    case "copy-local":
+      void copySessions("local");
+      break;
+    case "copy-utc":
+      void copySessions("utc");
       break;
     case "export-json":
       exportJson();
       break;
     case "stop-session":
       if (sessionId) stopSession(sessionId, nowIso());
+      break;
+    case "backdate-session":
+      if (sessionId) backdateSession(sessionId);
       break;
     case "delete-session":
       if (sessionId) deleteSession(sessionId);
@@ -528,6 +542,40 @@ function stopSession(sessionId: string, endAt: string) {
   render();
 }
 
+function backdateProject(projectId: string) {
+  const active = state.sessions.find((session) => session.projectId === projectId && !session.endAt);
+  if (active) {
+    backdateSession(active.id);
+  }
+}
+
+function backdateSession(sessionId: string) {
+  const session = getSession(sessionId);
+  if (!session || session.endAt) return;
+
+  const minutesText = window.prompt("End this running session how many minutes ago?", "5");
+  if (minutesText === null) return;
+
+  const minutesAgo = Number(minutesText);
+  if (!Number.isFinite(minutesAgo) || minutesAgo <= 0) {
+    notice = "Backdate failed. Enter a number greater than 0.";
+    render();
+    return;
+  }
+
+  const endAt = new Date(Date.now() - minutesAgo * 60_000).toISOString();
+  if (new Date(endAt).getTime() < new Date(session.startAt).getTime()) {
+    notice = "Backdate failed. The end time cannot be before the session start.";
+    render();
+    return;
+  }
+
+  session.endAt = endAt;
+  notice = `Paused the session ${formatDuration(minutesAgo * 60_000)} ago.`;
+  saveState();
+  render();
+}
+
 function endAll(endAt: string) {
   state.sessions.forEach((session) => {
     if (!session.endAt) {
@@ -568,17 +616,22 @@ function setMode(mode: TimerMode) {
   render();
 }
 
-async function copyTsv() {
+function toggleTheme() {
+  state.settings.theme = state.settings.theme === "dark" ? "light" : "dark";
+  saveState();
+  render();
+}
+
+async function copySessions(mode: CopyMode) {
+  const isLocal = mode === "local";
   const rows = [
-    ["Project", "Local Start", "Local End", "UTC Start", "UTC End", "Duration", "Note"],
+    ["Project", "Start", "End", "Duration", "Note"],
     ...filteredSessions().map((session) => {
       const project = getProject(session.projectId);
       return [
         project?.name || "Deleted project",
-        formatLocalDateTime(session.startAt),
-        session.endAt ? formatLocalDateTime(session.endAt) : "Running",
-        formatUtcDateTime(session.startAt),
-        session.endAt ? formatUtcDateTime(session.endAt) : "Running",
+        isLocal ? formatLocalDateTime(session.startAt) : formatUtcDateTime(session.startAt),
+        session.endAt ? (isLocal ? formatLocalDateTime(session.endAt) : formatUtcDateTime(session.endAt)) : "Running",
         formatDuration(sessionDurationMs(session)),
         session.note,
       ];
@@ -587,7 +640,7 @@ async function copyTsv() {
 
   const tsv = rows.map((row) => row.map((cell) => cell.replace(/\t|\n/g, " ")).join("\t")).join("\n");
   await navigator.clipboard.writeText(tsv);
-  notice = "Copied the visible session table as tab-separated text.";
+  notice = `Copied ${isLocal ? "local" : "UTC"} times for the visible sessions.`;
   render();
 }
 
@@ -621,6 +674,7 @@ function importJson(event: Event) {
         settings: {
           timerMode: imported.settings?.timerMode === "parallel" ? "parallel" : "exclusive",
           staleAfterMinutes: Number(imported.settings?.staleAfterMinutes) || 15,
+          theme: imported.settings?.theme === "dark" ? "dark" : "light",
         },
         lastSeenAt: nowIso(),
       };
@@ -668,6 +722,14 @@ function sessionDurationMs(session: WorkSession) {
 }
 
 function renderTimerValues() {
+  const totalToday = state.sessions
+    .filter((session) => isSameLocalDay(session.startAt, nowIso()))
+    .reduce((sum, session) => sum + sessionDurationMs(session), 0);
+  const totalTodayElement = app.querySelector<HTMLElement>("[data-total-today]");
+  if (totalTodayElement) {
+    totalTodayElement.textContent = formatDuration(totalToday);
+  }
+
   state.projects.forEach((project) => {
     const active = state.sessions.find((session) => session.projectId === project.id && !session.endAt);
     const timer = app.querySelector<HTMLElement>(`[data-timer-for="${project.id}"]`);
