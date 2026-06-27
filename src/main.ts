@@ -250,9 +250,7 @@ function renderThemeIcon() {
 function renderProjectCard(project: Project) {
   const active = state.sessions.find((session) => session.projectId === project.id && !session.endAt);
   const hasSessions = countProjectSessions(project.id) > 0;
-  const completedMs = state.sessions
-    .filter((session) => session.projectId === project.id)
-    .reduce((sum, session) => sum + sessionDurationMs(session), 0);
+  const totalProjectMs = projectDurationMs(project.id);
 
   return `
     <article class="project-card ${active ? "is-running" : ""}" style="--accent:${project.color}">
@@ -261,7 +259,7 @@ function renderProjectCard(project: Project) {
         <input class="project-name" data-action="rename-project" data-project-id="${project.id}" value="${escapeAttribute(project.name)}" aria-label="Project name" />
       </div>
       <div class="project-meta">
-        <span data-timer-for="${project.id}">${active ? formatDuration(Date.now() - new Date(active.startAt).getTime()) : formatDuration(completedMs)}</span>
+        <span data-timer-for="${project.id}">${formatDuration(totalProjectMs)}</span>
         <span>${active ? "running" : `${countProjectSessions(project.id)} sessions`}</span>
       </div>
       <div class="project-actions">
@@ -754,6 +752,12 @@ function sessionDurationMs(session: WorkSession) {
   return Math.max(0, end - start);
 }
 
+function projectDurationMs(projectId: string) {
+  return state.sessions
+    .filter((session) => session.projectId === projectId)
+    .reduce((sum, session) => sum + sessionDurationMs(session), 0);
+}
+
 function renderTimerValues() {
   const totalToday = state.sessions
     .filter((session) => isSameLocalDay(session.startAt, nowIso()))
@@ -764,10 +768,9 @@ function renderTimerValues() {
   }
 
   state.projects.forEach((project) => {
-    const active = state.sessions.find((session) => session.projectId === project.id && !session.endAt);
     const timer = app.querySelector<HTMLElement>(`[data-timer-for="${project.id}"]`);
-    if (timer && active) {
-      timer.textContent = formatDuration(Date.now() - new Date(active.startAt).getTime());
+    if (timer) {
+      timer.textContent = formatDuration(projectDurationMs(project.id));
     }
   });
 
