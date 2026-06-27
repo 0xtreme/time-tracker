@@ -251,6 +251,7 @@ function renderProjectCard(project: Project) {
   const active = state.sessions.find((session) => session.projectId === project.id && !session.endAt);
   const hasSessions = countProjectSessions(project.id) > 0;
   const totalProjectMs = projectDurationMs(project.id);
+  const activeSegmentMs = active ? sessionDurationMs(active) : 0;
 
   return `
     <article class="project-card ${active ? "is-running" : ""}" style="--accent:${project.color}">
@@ -260,7 +261,7 @@ function renderProjectCard(project: Project) {
       </div>
       <div class="project-meta">
         <span data-timer-for="${project.id}">${formatDuration(totalProjectMs)}</span>
-        <span>${active ? "running" : `${countProjectSessions(project.id)} sessions`}</span>
+        <span data-running-for="${project.id}">${active ? `running ${formatDuration(activeSegmentMs)}` : `${countProjectSessions(project.id)} sessions`}</span>
       </div>
       <div class="project-actions">
         <button class="primary" data-action="${active ? "pause-project" : "start-project"}" data-project-id="${project.id}">
@@ -596,7 +597,10 @@ function backdateSession(sessionId: string) {
 
   const endAt = new Date(Date.now() - minutesAgo * 60_000).toISOString();
   if (new Date(endAt).getTime() < new Date(session.startAt).getTime()) {
-    notice = "Backdate failed. The end time cannot be before the session start.";
+    const activeMs = sessionDurationMs(session);
+    session.endAt = session.startAt;
+    notice = `Paused at the start of the current run because it has only been running for ${formatDuration(activeMs)}. Edit earlier session rows to correct older logged time.`;
+    saveState();
     render();
     return;
   }
@@ -768,9 +772,14 @@ function renderTimerValues() {
   }
 
   state.projects.forEach((project) => {
+    const active = state.sessions.find((session) => session.projectId === project.id && !session.endAt);
     const timer = app.querySelector<HTMLElement>(`[data-timer-for="${project.id}"]`);
     if (timer) {
       timer.textContent = formatDuration(projectDurationMs(project.id));
+    }
+    const runningFor = app.querySelector<HTMLElement>(`[data-running-for="${project.id}"]`);
+    if (runningFor && active) {
+      runningFor.textContent = `running ${formatDuration(sessionDurationMs(active))}`;
     }
   });
 

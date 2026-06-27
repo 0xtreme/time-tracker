@@ -105,3 +105,24 @@ test("backdating a pause and resuming preserves corrected project time", async (
   await expect(projectOne.getByText("running")).toBeVisible();
   await expect(projectDuration(projectOne)).toHaveText(nonZeroDuration);
 });
+
+test("backdating beyond the current resumed segment does not fail", async ({ page }) => {
+  const projectOne = projectCard(page, "Project 1");
+
+  await projectOne.getByRole("button", { name: "Start" }).click();
+  await page.waitForTimeout(1100);
+  await projectOne.getByRole("button", { name: "Pause" }).click();
+  await expect(projectDuration(projectOne)).toHaveText(nonZeroDuration);
+
+  await projectOne.getByRole("button", { name: "Resume" }).click();
+
+  page.once("dialog", async (dialog) => {
+    expect(dialog.message()).toContain("End this running session");
+    await dialog.accept("5");
+  });
+  await projectOne.getByRole("button", { name: "Backdate" }).click();
+
+  await expect(page.getByText("Paused at the start of the current run")).toBeVisible();
+  await expect(projectOne.getByRole("button", { name: "Resume" })).toBeVisible();
+  await expect(projectDuration(projectOne)).toHaveText(nonZeroDuration);
+});
