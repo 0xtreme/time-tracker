@@ -194,15 +194,6 @@ async function localInputValueForAgo(page: Page, agoMs: number) {
   }, agoMs);
 }
 
-async function backdateProject(card: Locator, minutes: string) {
-  const page = card.page();
-  page.once("dialog", async (dialog) => {
-    expect(dialog.message()).toContain("End this running session");
-    await dialog.accept(minutes);
-  });
-  await card.getByRole("button", { name: "Backdate" }).click();
-}
-
 function expectDurationNear(actualMs: number, expectedMs: number, toleranceMs = 2500) {
   expect(Math.abs(actualMs - expectedMs)).toBeLessThanOrEqual(toleranceMs);
 }
@@ -260,64 +251,47 @@ test("S04-S05: single-active switching preserves both project totals", async ({ 
   expect(await runningSessionCount(page)).toBe(1);
 });
 
-test("S06: backdate inside the current running session ends it in the past", async ({ page }) => {
+test("S06-S08: backdate is removed and only the latest completed end can be edited", async ({ page }) => {
   await seedState(page, [
-    { id: "p1-active", projectId: projectOneId, startAgoMs: 10 * 60_000, endAgoMs: null },
+    { id: "p1-old", projectId: projectOneId, startAgoMs: 20 * 60_000, endAgoMs: 15 * 60_000 },
+    { id: "p1-latest", projectId: projectOneId, startAgoMs: 10 * 60_000, endAgoMs: 0 },
+    { id: "p2-latest", projectId: projectTwoId, startAgoMs: 12 * 60_000, endAgoMs: 5 * 60_000 },
   ]);
-  const projectOne = projectCard(page, "Project 1");
 
-  await backdateProject(projectOne, "5");
+  await expect(page.getByRole("button", { name: "Backdate" })).toHaveCount(0);
+  await expect(page.locator('[data-action="edit-session-start"]')).toHaveCount(0);
 
-  await expect(projectOne.getByRole("button", { name: "Resume" })).toBeVisible();
-  expect(await runningSessionCount(page)).toBe(0);
-  expectDurationNear(await stateProjectDurationMs(page, projectOneId), 5 * 60_000, 65_000);
+  const projectOneRows = page.locator(".session-card").filter({ hasText: "Project 1" });
+  await expect(projectOneRows).toHaveCount(2);
+  await expect(projectOneRows.nth(0).locator('[data-action="edit-session-end"]')).toHaveCount(1);
+  await expect(projectOneRows.nth(1).locator('[data-action="edit-session-end"]')).toHaveCount(0);
+
+  const fiveMinutesAgo = await localInputValueForAgo(page, 5 * 60_000);
+  await projectOneRows.nth(0).locator('[data-action="edit-session-end"]').fill(fiveMinutesAgo);
+  await projectOneRows.nth(0).locator('[data-action="edit-session-end"]').dispatchEvent("change");
+
+  expectDurationNear(await stateProjectDurationMs(page, projectOneId), 10 * 60_000, 65_000);
+  expectDurationNear(await stateProjectDurationMs(page, projectTwoId), 7 * 60_000, 65_000);
 });
 
-test("S07: backdate beyond current resumed segment trims previous project sessions newest-first", async ({ page }) => {
-  await seedState(page, [
-    { id: "p1-old", projectId: projectOneId, startAgoMs: 15 * 60_000, endAgoMs: 6 * 60_000 },
-    { id: "p1-active", projectId: projectOneId, startAgoMs: 60_000, endAgoMs: null },
-  ]);
+test("S09: pausing a running project makes that latest session end editable", async ({ page }) => {
   const projectOne = projectCard(page, "Project 1");
 
-  await backdateProject(projectOne, "5");
+  await projectOne.getByRole("button", { name: "Start" }).click();
+  await page.waitForTimeout(1100);
+  await expect(page.locator('[data-action="edit-session-end"]')).toHaveCount(0);
+  await projectOne.getByRole("button", { name: "Pause" }).click();
 
-  await expect(projectOne.getByRole("button", { name: "Resume" })).toBeVisible();
-  await expect(page.getByText("Backdated 5m 00s from this project's logged time.")).toBeVisible();
-  expect(await runningSessionCount(page)).toBe(0);
-  expectDurationNear(await stateProjectDurationMs(page, projectOneId), 5 * 60_000, 65_000);
+  const endInput = page.locator('[data-action="edit-session-end"]').first();
+  await expect(endInput).toBeVisible();
+  const endValue = await endInput.inputValue();
+  await endInput.fill("");
+  await endInput.dispatchEvent("change");
+  await expect(endInput).toHaveValue(endValue);
+  await expect(projectDuration(projectOne)).toHaveText(nonZeroDuration);
 });
 
-test("S08: backdate more than the project has logged trims all available project time", async ({ page }) => {
-  await seedState(page, [
-    { id: "p1-old", projectId: projectOneId, startAgoMs: 90_000, endAgoMs: 30_000 },
-    { id: "p1-active", projectId: projectOneId, startAgoMs: 10_000, endAgoMs: null },
-  ]);
-  const projectOne = projectCard(page, "Project 1");
-
-  await backdateProject(projectOne, "5");
-
-  await expect(page.getByText(/There was not enough previous time/)).toBeVisible();
-  expect(await runningSessionCount(page)).toBe(0);
-  expectDurationNear(await stateProjectDurationMs(page, projectOneId), 0);
-});
-
-test("S09: backdating one project does not change another project's sessions", async ({ page }) => {
-  await seedState(page, [
-    { id: "p1-old", projectId: projectOneId, startAgoMs: 15 * 60_000, endAgoMs: 6 * 60_000 },
-    { id: "p1-active", projectId: projectOneId, startAgoMs: 60_000, endAgoMs: null },
-    { id: "p2-old", projectId: projectTwoId, startAgoMs: 12 * 60_000, endAgoMs: 5 * 60_000 },
-  ]);
-  const projectOne = projectCard(page, "Project 1");
-
-  const projectTwoBefore = await stateProjectDurationMs(page, projectTwoId);
-  await backdateProject(projectOne, "5");
-
-  expectDurationNear(await stateProjectDurationMs(page, projectOneId), 5 * 60_000);
-  expectDurationNear(await stateProjectDurationMs(page, projectTwoId), projectTwoBefore);
-});
-
-test("S10: editing a completed session changes the project total", async ({ page }) => {
+test("S10: editing latest completed session end changes the project total", async ({ page }) => {
   await seedState(page, [
     { id: "p1-complete", projectId: projectOneId, startAgoMs: 10 * 60_000, endAgoMs: 0 },
   ]);
@@ -528,18 +502,21 @@ test("S21-S22: end all and parallel mode handle multiple running sessions", asyn
   expect(await runningSessionCount(page)).toBe(0);
 });
 
-test("S23-S24: invalid or cancelled backdate leaves running session unchanged", async ({ page }) => {
-  const projectOne = projectCard(page, "Project 1");
-  await projectOne.getByRole("button", { name: "Start" }).click();
+test("S23-S24: invalid latest end edits are ignored and running rows stay read-only", async ({ page }) => {
+  await seedState(page, [
+    { id: "p1-complete", projectId: projectOneId, startAgoMs: 10 * 60_000, endAgoMs: 0 },
+    { id: "p2-active", projectId: projectTwoId, startAgoMs: 60_000, endAgoMs: null },
+  ]);
 
-  page.once("dialog", async (dialog) => dialog.accept("abc"));
-  await projectOne.getByRole("button", { name: "Backdate" }).click();
-  await expect(page.getByText("Backdate failed. Enter a number greater than 0.")).toBeVisible();
-  expect(await runningSessionCount(page)).toBe(1);
+  const before = await stateProjectDurationMs(page, projectOneId);
+  const endInput = page.locator('[data-action="edit-session-end"]').first();
+  const originalValue = await endInput.inputValue();
+  await endInput.fill("not a timestamp");
+  await endInput.dispatchEvent("change");
 
-  page.once("dialog", async (dialog) => dialog.dismiss());
-  await projectOne.getByRole("button", { name: "Backdate" }).click();
-  expect(await runningSessionCount(page)).toBe(1);
+  await expect(endInput).toHaveValue(originalValue);
+  expectDurationNear(await stateProjectDurationMs(page, projectOneId), before);
+  await expect(page.locator(".session-card").filter({ hasText: "Project 2" }).locator('[data-action="edit-session-end"]')).toHaveCount(0);
 });
 
 test("S25: invalid upload preserves current state and shows failure notice", async ({ page }) => {
@@ -601,7 +578,7 @@ test("S29-S30: negative edited durations clamp to zero and session rows avoid du
   expectDurationNear(await stateProjectDurationMs(page, projectOneId), 0);
   await expect(page.locator(".session-card").first().getByRole("button", { name: "Delete" })).toBeVisible();
   await expect(page.locator(".session-card").first().getByRole("button", { name: "Pause" })).toHaveCount(0);
-  await expect(page.locator(".session-card").first().getByRole("button", { name: "Backdate" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Backdate" })).toHaveCount(0);
 });
 
 test("S31: uploading a backup while recovery is visible replaces stale local state", async ({ context }) => {
@@ -700,7 +677,7 @@ test("S34: completed sessions can cross a local date boundary", async ({ page, c
   ]);
 
   const session = page.locator(".session-card").first();
-  await expect(session.locator('[data-action="edit-session-start"]')).toHaveValue("15/01/2026 23:50:00");
+  await expect(session.locator(".time-field").filter({ hasText: "Local start" }).locator("output")).toHaveText("15/01/2026 23:50:00");
   await expect(session.locator('[data-action="edit-session-end"]')).toHaveValue("16/01/2026 00:20:00");
   await expect(session.locator('[data-session-duration="cross-midnight"]')).toHaveText("30m 00s");
   expectDurationNear(await stateProjectDurationMs(page, projectOneId), 30 * 60_000);

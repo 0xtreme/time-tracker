@@ -1,6 +1,6 @@
 # Time Tracking Scenario Matrix
 
-This document defines the expected behavior for project timers, session rows, pause/resume, switching projects, and backdated corrections.
+This document defines the expected behavior for project timers, session rows, pause/resume, switching projects, and manual end-time corrections.
 
 ## Core Model
 
@@ -12,24 +12,14 @@ This document defines the expected behavior for project timers, session rows, pa
 - In single-active mode, starting or resuming a project closes any other running session at the same timestamp.
 - In parallel mode, projects can have running sessions at the same time.
 
-## Backdate Model
+## Correction Model
 
-Backdate means: "the project should have stopped counting this many minutes ago."
-
-If the requested backdate fits inside the current running session:
-
-- end the current session at `now - requestedMinutes`,
-- leave older sessions unchanged.
-
-If the requested backdate is longer than the current running session:
-
-- close the current session at its start time,
-- remove the remaining correction time from previous completed sessions for the same project,
-- trim previous sessions newest-first by moving their end times earlier,
-- never move a session end before its start,
-- if there is not enough previous time, remove as much as possible and tell the user.
-
-Backdate should never fail just because the current resumed segment is shorter than the requested correction.
+- Backdate is intentionally not available.
+- Running sessions must be paused before their end time can be corrected.
+- Local start, UTC start, and UTC end are read-only in session rows.
+- Local end is editable only for the latest completed session for that project.
+- Older session rows remain auditable and read-only except for their note and delete controls.
+- Editing the latest completed local end immediately updates the row duration and project total.
 
 ## Required Scenarios
 
@@ -40,11 +30,11 @@ Backdate should never fail just because the current resumed segment is shorter t
 | S03 | Resume Project 1 | New running session is created; project total continues from previous time instead of resetting to zero. |
 | S04 | Start Project 2 while Project 1 is running in single-active mode | Project 1 running session is ended; Project 2 starts; only one session is running. |
 | S05 | Resume Project 1 while Project 2 is running in single-active mode | Project 2 running session is ended; Project 1 starts a new session; both project totals are preserved. |
-| S06 | Backdate Project 1 by less than the current run duration | Current session ends at `now - requested`; older Project 1 sessions are unchanged. |
-| S07 | Backdate Project 1 by more than the current run duration after resume | Current session is zeroed at its start; newest previous Project 1 sessions are trimmed until requested time is removed. |
-| S08 | Backdate Project 1 by more time than Project 1 has logged | All available Project 1 time is trimmed to zero-duration sessions; user is told the full correction could not be applied. |
-| S09 | Backdate Project 1 does not affect Project 2 sessions | Only sessions for Project 1 are changed. |
-| S10 | Edit a completed session start/end | Project total updates from the edited row. |
+| S06 | Backdate control is unavailable | No Backdate button is shown in project cards or session rows. |
+| S07 | Latest completed session end is editable | Only the most recent completed session for a project exposes editable Local end. |
+| S08 | Older session timestamps are read-only | Local start, UTC timestamps, and older Local end values are displayed but not editable. |
+| S09 | Pause a running project, then edit Local end | Pausing creates the latest completed row; editing its Local end updates duration and project total. |
+| S10 | Edit latest completed session end | Project total updates from the edited Local end. |
 | S11 | Copy local with a project filter selected | Clipboard includes only visible filtered sessions, using local timestamps. |
 | S12 | Copy UTC with all projects selected | Clipboard includes all visible sessions, using UTC timestamps. |
 | S13 | Save file | Browser downloads JSON containing projects, sessions, settings, and last seen time. |
@@ -57,14 +47,14 @@ Backdate should never fail just because the current resumed segment is shorter t
 | S20 | Delete one session while a project has multiple sessions | Only the selected session is removed; remaining sessions and total stay correct. |
 | S21 | End all while one or more sessions are running | Every running session gets an end time; no running sessions remain. |
 | S22 | Parallel mode starts multiple running projects | Multiple projects can run simultaneously; switching back to single-active closes all but the newest active session. |
-| S23 | Invalid backdate input | Non-numeric, zero, or negative values do not change sessions and show an error notice. |
-| S24 | Cancel backdate prompt | Sessions are unchanged and no error notice is shown. |
+| S23 | Invalid Local end edit | Invalid timestamp text is ignored and the previous Local end value is restored. |
+| S24 | Running session end editability | Running rows show Local end and UTC end as `Running`; no end edit field is shown until pause. |
 | S25 | Invalid upload file | Existing state remains unchanged and an import failure notice is shown. |
 | S26 | Theme toggle | Theme changes immediately and persists after reload. |
 | S27 | Recovery keep running | Stale running session remains running and recovery banner disappears. |
 | S28 | Recovery end now | Stale running session is ended at current time and recovery banner disappears. |
 | S29 | Editing a session end before its start | The row duration clamps to zero rather than creating negative time. |
-| S30 | Session row controls | Session rows expose Delete and editable fields only; Pause and Backdate are project-level controls only. |
+| S30 | Session row controls | Session rows expose Delete, note editing, read-only timestamps, and only the latest completed Local end edit field. |
 | S31 | Upload a backup while stale recovery banner is visible | Imported file replaces stale local state and recovery banner disappears if imported state is not stale. |
 | S32 | Save, reopen, and upload saved backup | Saved JSON can restore projects/sessions after local state changes or reload. |
 | S33 | Invalid upload while stale recovery banner is visible | Existing stale running state remains intact and recovery controls still work. |
@@ -81,4 +71,4 @@ Backdate should never fail just because the current resumed segment is shorter t
 
 - The app does not create accounts or sync data to a backend.
 - The app does not automatically write a backup file when the window closes because browsers require user interaction for file writes.
-- The app does not silently delete corrected sessions; zero-duration rows remain visible and editable.
+- The app does not silently alter older sessions when a current session is corrected.

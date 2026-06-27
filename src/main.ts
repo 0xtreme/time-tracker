@@ -289,7 +289,6 @@ function renderProjectCard(project: Project) {
         <button class="primary" data-action="${active ? "pause-project" : "start-project"}" data-project-id="${project.id}">
           ${active ? "Pause" : hasSessions ? "Resume" : "Start"}
         </button>
-        <button data-action="backdate-project" data-project-id="${project.id}" ${active ? "" : "disabled"}>Backdate</button>
         <button data-action="quick-note" data-project-id="${project.id}" ${active ? "" : "disabled"}>Note</button>
         <button class="ghost" data-action="archive-project" data-project-id="${project.id}" ${active ? "disabled" : ""}>Archive</button>
       </div>
@@ -391,6 +390,7 @@ function renderSessionRow(session: WorkSession) {
   const endValue = session.endAt ? toLocalInputValue(session.endAt) : "";
   const duration = sessionDurationMs(session);
   const status = session.endAt ? "Completed" : "Running";
+  const canEditEnd = Boolean(session.endAt && isLatestSessionForProject(session));
 
   return `
     <article class="session-card">
@@ -407,12 +407,14 @@ function renderSessionRow(session: WorkSession) {
       <div class="time-grid">
         <label class="time-field">
           <span>Local start</span>
-          <input type="text" inputmode="numeric" data-action="edit-session-start" data-session-id="${session.id}" value="${toLocalInputValue(session.startAt)}" placeholder="DD/MM/YYYY HH:mm:ss" />
+          <output>${toLocalInputValue(session.startAt)}</output>
         </label>
         <label class="time-field">
           <span>Local end</span>
           ${session.endAt
-            ? `<input type="text" inputmode="numeric" data-action="edit-session-end" data-session-id="${session.id}" value="${endValue}" placeholder="DD/MM/YYYY HH:mm:ss" />`
+            ? canEditEnd
+              ? `<input type="text" inputmode="numeric" data-action="edit-session-end" data-session-id="${session.id}" value="${endValue}" placeholder="DD/MM/YYYY HH:mm:ss" />`
+              : `<output>${endValue}</output>`
             : "<output>Running</output>"}
         </label>
         <div class="time-field">
@@ -441,7 +443,7 @@ function bindEvents() {
       return;
     }
 
-    if (action === "edit-session-start" || action === "edit-session-end") {
+    if (action === "edit-session-end") {
       element.addEventListener("change", handleInput);
       return;
     }
@@ -476,9 +478,6 @@ function handleClick(event: Event) {
       break;
     case "pause-project":
       if (projectId) stopProject(projectId);
-      break;
-    case "backdate-project":
-      if (projectId) backdateProject(projectId);
       break;
     case "quick-note":
       if (projectId) addQuickNote(projectId);
@@ -554,20 +553,19 @@ function handleInput(event: Event) {
     saveState();
   }
 
-  if (action === "edit-session-start") {
-    const parsed = fromLocalInputValue(target.value);
-    if (parsed) {
-      session.startAt = parsed;
-      if (session.endAt && new Date(session.endAt).getTime() < new Date(parsed).getTime()) {
-        session.endAt = parsed;
-      }
-      saveState();
-      render();
-    }
-  }
-
   if (action === "edit-session-end") {
-    session.endAt = target.value ? fromLocalInputValue(target.value) : null;
+    if (!isLatestSessionForProject(session) || !session.endAt) {
+      render();
+      return;
+    }
+
+    const parsed = target.value ? fromLocalInputValue(target.value) : null;
+    if (!parsed) {
+      render();
+      return;
+    }
+
+    session.endAt = parsed;
     saveState();
     render();
   }
@@ -646,71 +644,6 @@ function stopSession(sessionId: string, endAt: string) {
   session.endAt = endAt;
   saveState();
   render();
-}
-
-function backdateProject(projectId: string) {
-  const active = state.sessions.find((session) => session.projectId === projectId && !session.endAt);
-  if (active) {
-    backdateSession(active.id);
-  }
-}
-
-function backdateSession(sessionId: string) {
-  const session = getSession(sessionId);
-  if (!session || session.endAt) return;
-
-  const minutesText = window.prompt("End this running session how many minutes ago?", "5");
-  if (minutesText === null) return;
-
-  const minutesAgo = Number(minutesText);
-  if (!Number.isFinite(minutesAgo) || minutesAgo <= 0) {
-    notice = "Backdate failed. Enter a number greater than 0.";
-    render();
-    return;
-  }
-
-  const endAt = new Date(Date.now() - minutesAgo * 60_000).toISOString();
-  if (new Date(endAt).getTime() < new Date(session.startAt).getTime()) {
-    const requestedMs = minutesAgo * 60_000;
-    const activeMs = sessionDurationMs(session);
-    session.endAt = session.startAt;
-    const trimmedMs = trimPreviousProjectSessions(session.projectId, session.id, Math.max(0, requestedMs - activeMs));
-    const adjustedMs = activeMs + trimmedMs;
-    const unadjustedMs = Math.max(0, requestedMs - adjustedMs);
-    notice = unadjustedMs
-      ? `Backdated ${formatDuration(adjustedMs)} from this project's logged time. There was not enough previous time to remove the remaining ${formatDuration(unadjustedMs)}.`
-      : `Backdated ${formatDuration(requestedMs)} from this project's logged time.`;
-    saveState();
-    render();
-    return;
-  }
-
-  session.endAt = endAt;
-  notice = `Paused the session ${formatDuration(minutesAgo * 60_000)} ago.`;
-  saveState();
-  render();
-}
-
-function trimPreviousProjectSessions(projectId: string, excludedSessionId: string, durationMs: number) {
-  let remainingMs = durationMs;
-  let trimmedMs = 0;
-  const sessions = state.sessions
-    .filter((session) => session.projectId === projectId && session.id !== excludedSessionId && session.endAt)
-    .sort((a, b) => new Date(b.endAt || b.startAt).getTime() - new Date(a.endAt || a.startAt).getTime());
-
-  sessions.forEach((session) => {
-    if (remainingMs <= 0 || !session.endAt) return;
-
-    const startMs = new Date(session.startAt).getTime();
-    const endMs = new Date(session.endAt).getTime();
-    const sessionMs = Math.max(0, endMs - startMs);
-    const removeMs = Math.min(sessionMs, remainingMs);
-    session.endAt = new Date(endMs - removeMs).toISOString();
-    remainingMs -= removeMs;
-    trimmedMs += removeMs;
-  });
-
-  return trimmedMs;
 }
 
 function endAll(endAt: string) {
@@ -851,6 +784,14 @@ function getActiveSessions() {
 
 function countProjectSessions(projectId: string) {
   return state.sessions.filter((session) => session.projectId === projectId).length;
+}
+
+function isLatestSessionForProject(session: WorkSession) {
+  const latest = state.sessions
+    .filter((candidate) => candidate.projectId === session.projectId)
+    .sort((a, b) => new Date(b.startAt).getTime() - new Date(a.startAt).getTime())[0];
+
+  return latest?.id === session.id;
 }
 
 function sessionDurationMs(session: WorkSession) {
