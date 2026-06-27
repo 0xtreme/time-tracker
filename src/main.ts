@@ -291,7 +291,7 @@ function renderRecoveryBanner() {
   return `
     <section class="recovery" aria-label="Timer recovery">
       <div>
-        <strong>${activeCount} session${activeCount === 1 ? "" : "s"} were running while this tab was away.</strong>
+        <strong>${activeCount} session${activeCount === 1 ? "" : "s"} ${activeCount === 1 ? "was" : "were"} running while this tab was away.</strong>
         <p>Last browser activity was ${formatLocalDateTime(lastSeen.toISOString())}, about ${formatDuration(gap)} ago.</p>
       </div>
       <div class="recovery-actions">
@@ -597,9 +597,15 @@ function backdateSession(sessionId: string) {
 
   const endAt = new Date(Date.now() - minutesAgo * 60_000).toISOString();
   if (new Date(endAt).getTime() < new Date(session.startAt).getTime()) {
+    const requestedMs = minutesAgo * 60_000;
     const activeMs = sessionDurationMs(session);
     session.endAt = session.startAt;
-    notice = `Paused at the start of the current run because it has only been running for ${formatDuration(activeMs)}. Edit earlier session rows to correct older logged time.`;
+    const trimmedMs = trimPreviousProjectSessions(session.projectId, session.id, Math.max(0, requestedMs - activeMs));
+    const adjustedMs = activeMs + trimmedMs;
+    const unadjustedMs = Math.max(0, requestedMs - adjustedMs);
+    notice = unadjustedMs
+      ? `Backdated ${formatDuration(adjustedMs)} from this project's logged time. There was not enough previous time to remove the remaining ${formatDuration(unadjustedMs)}.`
+      : `Backdated ${formatDuration(requestedMs)} from this project's logged time.`;
     saveState();
     render();
     return;
@@ -609,6 +615,28 @@ function backdateSession(sessionId: string) {
   notice = `Paused the session ${formatDuration(minutesAgo * 60_000)} ago.`;
   saveState();
   render();
+}
+
+function trimPreviousProjectSessions(projectId: string, excludedSessionId: string, durationMs: number) {
+  let remainingMs = durationMs;
+  let trimmedMs = 0;
+  const sessions = state.sessions
+    .filter((session) => session.projectId === projectId && session.id !== excludedSessionId && session.endAt)
+    .sort((a, b) => new Date(b.endAt || b.startAt).getTime() - new Date(a.endAt || a.startAt).getTime());
+
+  sessions.forEach((session) => {
+    if (remainingMs <= 0 || !session.endAt) return;
+
+    const startMs = new Date(session.startAt).getTime();
+    const endMs = new Date(session.endAt).getTime();
+    const sessionMs = Math.max(0, endMs - startMs);
+    const removeMs = Math.min(sessionMs, remainingMs);
+    session.endAt = new Date(endMs - removeMs).toISOString();
+    remainingMs -= removeMs;
+    trimmedMs += removeMs;
+  });
+
+  return trimmedMs;
 }
 
 function endAll(endAt: string) {
