@@ -3,6 +3,7 @@ import "./styles.css";
 type TimerMode = "exclusive" | "parallel";
 type Theme = "light" | "dark";
 type CopyMode = "local" | "utc";
+type ProjectPanelView = "active" | "archived";
 
 type Project = {
   id: string;
@@ -48,6 +49,7 @@ const app: HTMLDivElement = appElement;
 
 let state = loadState();
 let selectedProjectId = "all";
+let projectPanelView: ProjectPanelView = "active";
 let recoveryVisible = shouldShowRecovery(state);
 let notice = "";
 
@@ -171,14 +173,14 @@ function render() {
             </div>
             <button class="icon-button" data-action="add-project" title="Add project" aria-label="Add project">+</button>
           </div>
-          <div class="mode-toggle" role="group" aria-label="Timer mode">
-            <button class="${state.settings.timerMode === "exclusive" ? "is-active" : ""}" data-action="set-mode" data-mode="exclusive">Single active</button>
-            <button class="${state.settings.timerMode === "parallel" ? "is-active" : ""}" data-action="set-mode" data-mode="parallel">Parallel</button>
+          <div class="mode-toggle" role="group" aria-label="Project mode and archive view">
+            <button class="${projectPanelView === "active" && state.settings.timerMode === "exclusive" ? "is-active" : ""}" data-action="set-mode" data-mode="exclusive">Single active</button>
+            <button class="${projectPanelView === "active" && state.settings.timerMode === "parallel" ? "is-active" : ""}" data-action="set-mode" data-mode="parallel">Parallel</button>
+            <button class="${projectPanelView === "archived" ? "is-active" : ""}" data-action="show-archived">Archived</button>
           </div>
           <div class="project-list">
-            ${state.projects.filter((project) => !project.archived).map(renderProjectCard).join("")}
+            ${projectPanelView === "archived" ? renderArchivedProjects() : renderActiveProjects()}
           </div>
-          ${renderArchivedProjects()}
         </aside>
 
         <section class="session-panel" aria-label="Session log">
@@ -248,6 +250,20 @@ function renderThemeIcon() {
   `;
 }
 
+function renderActiveProjects() {
+  const activeProjects = state.projects.filter((project) => !project.archived);
+  if (!activeProjects.length) {
+    return `
+      <div class="empty-state compact">
+        <h3>No active projects</h3>
+        <p>Restore an archived project or add a new one.</p>
+      </div>
+    `;
+  }
+
+  return activeProjects.map(renderProjectCard).join("");
+}
+
 function renderProjectCard(project: Project) {
   const active = state.sessions.find((session) => session.projectId === project.id && !session.endAt);
   const hasSessions = countProjectSessions(project.id) > 0;
@@ -279,21 +295,21 @@ function renderProjectCard(project: Project) {
 function renderArchivedProjects() {
   const archivedProjects = state.projects.filter((project) => project.archived);
   if (!archivedProjects.length) {
-    return "";
+    return `
+      <div class="empty-state compact">
+        <h3>No archived projects</h3>
+        <p>Archived projects will appear here.</p>
+      </div>
+    `;
   }
 
   return `
-    <section class="archived-projects" aria-label="Archived projects">
-      <h3>Archived</h3>
-      <div class="archived-list">
-        ${archivedProjects.map((project) => `
-          <article class="archived-project" style="--accent:${project.color}">
-            <span class="project-pill" style="--accent:${project.color}">${escapeHtml(project.name)}</span>
-            <button data-action="restore-project" data-project-id="${project.id}">Restore</button>
-          </article>
-        `).join("")}
-      </div>
-    </section>
+    ${archivedProjects.map((project) => `
+      <article class="archived-project" style="--accent:${project.color}">
+        <span class="project-pill" style="--accent:${project.color}">${escapeHtml(project.name)}</span>
+        <button data-action="restore-project" data-project-id="${project.id}">Restore</button>
+      </article>
+    `).join("")}
   `;
 }
 
@@ -442,6 +458,10 @@ function handleClick(event: Event) {
     case "set-mode":
       setMode(target.dataset.mode === "parallel" ? "parallel" : "exclusive");
       break;
+    case "show-archived":
+      projectPanelView = "archived";
+      render();
+      break;
     case "toggle-theme":
       toggleTheme();
       break;
@@ -534,6 +554,7 @@ function addProject() {
     color: PROJECT_COLORS[state.projects.length % PROJECT_COLORS.length],
     archived: false,
   });
+  projectPanelView = "active";
   saveState();
   render();
 }
@@ -555,6 +576,7 @@ function restoreProject(projectId: string) {
   if (!project) return;
 
   project.archived = false;
+  projectPanelView = "active";
   saveState();
   render();
 }
@@ -692,6 +714,7 @@ function addQuickNote(projectId: string) {
 }
 
 function setMode(mode: TimerMode) {
+  projectPanelView = "active";
   state.settings.timerMode = mode;
   if (mode === "exclusive") {
     const active = getActiveSessions();

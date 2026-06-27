@@ -366,7 +366,9 @@ test("S16-S18: add, rename, and archive project behavior is constrained", async 
   const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
   expect(clipboardText).toContain("Client Alpha");
 
-  await page.locator(".archived-projects").getByRole("button", { name: "Restore" }).click();
+  await page.getByRole("button", { name: "Archived" }).click();
+  await expect(page.locator(".archived-project").filter({ hasText: "Client Alpha" })).toBeVisible();
+  await page.locator(".archived-project").filter({ hasText: "Client Alpha" }).getByRole("button", { name: "Restore" }).click();
   await expect(projectCard(page, "Client Alpha")).toBeVisible();
 });
 

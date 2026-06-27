@@ -51,7 +51,7 @@ Backdate should never fail just because the current resumed segment is shorter t
 | S14 | Upload file | Imported JSON replaces local state and re-renders projects/sessions. |
 | S15 | Reopen with a stale running session | Recovery banner appears; user can keep running, end at last seen, or end now. |
 | S16 | Add and rename a project | New project appears; renamed project is used in filters, project card, sessions, and copied rows. |
-| S17 | Archive and restore a project with no running session | Project card moves to the Archived section; existing session rows remain visible under All; Restore returns the project to active cards. |
+| S17 | Archive and restore a project with no running session | Project card is hidden from active project views, appears under the Archived tab, and Restore returns it to active cards. Existing session rows remain visible under All. |
 | S18 | Attempt to archive a running project | Archive is disabled until the project is paused. |
 | S19 | Delete a session row | Session is removed from storage and project total updates. |
 | S20 | Delete one session while a project has multiple sessions | Only the selected session is removed; remaining sessions and total stay correct. |
