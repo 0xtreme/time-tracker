@@ -581,9 +581,17 @@ p {
   font-size: 0.84rem;
 }
 
+.time-field input {
+  width: min(100%, 178px);
+  justify-self: start;
+}
+
 .time-field output {
   display: flex;
   align-items: center;
+  width: max-content;
+  max-width: 100%;
+  justify-self: start;
   overflow-wrap: anywhere;
 }
 
