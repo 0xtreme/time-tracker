@@ -145,7 +145,7 @@ function render() {
       <header class="topbar">
         <div class="brand">
           ${renderBrandIcon()}
-          <h1>Time Session Tracker</h1>
+          <h1>Session Tracker</h1>
         </div>
         <div class="topbar__stats" aria-label="Current tracker summary">
           <span>${activeSessions.length} running</span>

@@ -15,6 +15,14 @@ type SeedSession = {
   note?: string;
 };
 
+type AbsoluteSession = {
+  id: string;
+  projectId: string;
+  startAt: string;
+  endAt: string | null;
+  note?: string;
+};
+
 function staleRunningState(now = Date.now()) {
   return {
     schemaVersion: 1,
@@ -79,6 +87,39 @@ async function seedState(page: Page, sessions: SeedSession[], timerMode: "exclus
     buffer: Buffer.from(JSON.stringify(state)),
   });
   await expect(page.getByText("Imported sessions from JSON.")).toBeVisible();
+}
+
+async function seedAbsoluteState(page: Page, sessions: AbsoluteSession[], timerMode: "exclusive" | "parallel" = "exclusive") {
+  const createdAt = new Date(2026, 0, 15, 8, 0).toISOString();
+  const state = {
+    schemaVersion: 1,
+    projects: [
+      { id: projectOneId, name: "Project 1", createdAt, color: "#2563eb", archived: false },
+      { id: projectTwoId, name: "Project 2", createdAt, color: "#0f766e", archived: false },
+      { id: projectThreeId, name: "Project 3", createdAt, color: "#9333ea", archived: false },
+    ],
+    sessions: sessions.map((session) => ({
+      ...session,
+      note: session.note || "",
+    })),
+    settings: {
+      timerMode,
+      staleAfterMinutes: 15,
+      theme: "light",
+    },
+    lastSeenAt: createdAt,
+  };
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "absolute-seed.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(state)),
+  });
+  await expect(page.getByText("Imported sessions from JSON.")).toBeVisible();
+}
+
+function localIso(year: number, monthIndex: number, day: number, hour: number, minute: number) {
+  return new Date(year, monthIndex, day, hour, minute).toISOString();
 }
 
 async function stateProjectDurationMs(page: Page, projectId: string) {
@@ -302,6 +343,7 @@ test("S13: saving an offline backup downloads the current tracker state", async 
   await seedState(page, [
     { id: "p1-complete", projectId: projectOneId, startAgoMs: 10 * 60_000, endAgoMs: 5 * 60_000, note: "Backup note" },
   ]);
+  await projectCard(page, "Project 1").getByRole("button", { name: "Archive" }).click();
 
   const [download] = await Promise.all([
     page.waitForEvent("download"),
@@ -312,8 +354,11 @@ test("S13: saving an offline backup downloads the current tracker state", async 
   const path = await download.path();
   expect(path).toBeTruthy();
   const backup = JSON.parse(readFileSync(path || "", "utf8"));
-  expect(backup.projects.some((project: { name: string }) => project.name === "Project 1")).toBe(true);
+  const exportedProject = backup.projects.find((project: { name: string }) => project.name === "Project 1");
+  expect(exportedProject?.archived).toBe(true);
   expect(backup.sessions.some((session: { note: string }) => session.note === "Backup note")).toBe(true);
+  expect(backup.settings.timerMode).toBe("exclusive");
+  expect(typeof backup.lastSeenAt).toBe("string");
 });
 
 test("S15: reopening with a stale running session shows recovery controls", async ({ context }) => {
@@ -568,4 +613,68 @@ test("S33: invalid upload during recovery preserves stale running state", async 
   await page.getByRole("button", { name: "End now" }).click();
   expect(await runningSessionCount(page)).toBe(0);
   await page.close();
+});
+
+test("S34: completed sessions can cross a local date boundary", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const startAt = localIso(2026, 0, 15, 23, 50);
+  const endAt = localIso(2026, 0, 16, 0, 20);
+
+  await seedAbsoluteState(page, [
+    { id: "cross-midnight", projectId: projectOneId, startAt, endAt, note: "Across midnight" },
+  ]);
+
+  const session = page.locator(".session-card").first();
+  await expect(session.locator('[data-action="edit-session-start"]')).toHaveValue("2026-01-15T23:50");
+  await expect(session.locator('[data-action="edit-session-end"]')).toHaveValue("2026-01-16T00:20");
+  await expect(session.locator('[data-session-duration="cross-midnight"]')).toHaveText("30m 00s");
+  expectDurationNear(await stateProjectDurationMs(page, projectOneId), 30 * 60_000);
+
+  await page.getByRole("button", { name: "Copy local" }).click();
+  const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+  expect(clipboardText).toContain("Across midnight");
+  expect(clipboardText).toContain("30m 00s");
+});
+
+test("S35-S36: overlapping sessions across projects and within one project are preserved", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await seedAbsoluteState(page, [
+    {
+      id: "p1-overlap-early",
+      projectId: projectOneId,
+      startAt: localIso(2026, 0, 15, 9, 0),
+      endAt: localIso(2026, 0, 15, 10, 0),
+      note: "Project 1 early overlap",
+    },
+    {
+      id: "p1-overlap-late",
+      projectId: projectOneId,
+      startAt: localIso(2026, 0, 15, 9, 30),
+      endAt: localIso(2026, 0, 15, 10, 15),
+      note: "Project 1 late overlap",
+    },
+    {
+      id: "p2-overlap",
+      projectId: projectTwoId,
+      startAt: localIso(2026, 0, 15, 9, 45),
+      endAt: localIso(2026, 0, 15, 10, 30),
+      note: "Project 2 overlap",
+    },
+  ]);
+
+  expectDurationNear(await stateProjectDurationMs(page, projectOneId), 105 * 60_000);
+  expectDurationNear(await stateProjectDurationMs(page, projectTwoId), 45 * 60_000);
+  await expect(projectDuration(projectCard(page, "Project 1"))).toHaveText("1h 45m");
+  await expect(projectDuration(projectCard(page, "Project 2"))).toHaveText("45m 00s");
+
+  await page.getByRole("button", { name: "Project 1" }).click();
+  await expect(page.locator(".session-card")).toHaveCount(2);
+  await page.getByRole("button", { name: "Copy UTC" }).click();
+  const projectOneClipboard = await page.evaluate(() => navigator.clipboard.readText());
+  expect(projectOneClipboard).toContain("Project 1 early overlap");
+  expect(projectOneClipboard).toContain("Project 1 late overlap");
+  expect(projectOneClipboard).not.toContain("Project 2 overlap");
+
+  await page.locator(".filters").getByRole("button", { name: "All", exact: true }).click();
+  await expect(page.locator(".session-card")).toHaveCount(3);
 });

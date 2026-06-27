@@ -68,6 +68,9 @@ Backdate should never fail just because the current resumed segment is shorter t
 | S31 | Upload a backup while stale recovery banner is visible | Imported file replaces stale local state and recovery banner disappears if imported state is not stale. |
 | S32 | Save, reopen, and upload saved backup | Saved JSON can restore projects/sessions after local state changes or reload. |
 | S33 | Invalid upload while stale recovery banner is visible | Existing stale running state remains intact and recovery controls still work. |
+| S34 | Completed session starts before local midnight and ends after local midnight | Start/end date fields preserve different local dates; duration, copy output, and totals remain correct. |
+| S35 | Overlapping completed sessions within one project | Sessions are preserved as separate logged windows and project total is cumulative, not de-duplicated. |
+| S36 | Overlapping completed sessions across projects | Project filters and copy output keep each project isolated while All still shows every overlapping session. |
 
 ## Non-Goals
 

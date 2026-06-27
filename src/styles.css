@@ -550,8 +550,9 @@ p {
 
 .time-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(166px, 178px) minmax(166px, 178px) minmax(190px, 202px) minmax(190px, 202px);
   gap: 7px;
+  justify-content: start;
   margin-bottom: 8px;
 }
 
@@ -584,7 +585,8 @@ p {
 .time-field output {
   display: flex;
   align-items: center;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  white-space: nowrap;
 }
 
 .note-input {
@@ -655,7 +657,7 @@ p {
   }
 
   .time-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(190px, 1fr));
   }
 }
 
