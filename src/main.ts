@@ -337,10 +337,6 @@ function renderSessionRow(session: WorkSession) {
           <strong data-session-duration="${session.id}">${formatDuration(duration)}</strong>
         </div>
         <div class="row-actions">
-          ${session.endAt ? "" : `
-            <button data-action="backdate-session" data-session-id="${session.id}">Backdate</button>
-            <button data-action="stop-session" data-session-id="${session.id}">Pause</button>
-          `}
           <button class="ghost" data-action="delete-session" data-session-id="${session.id}">Delete</button>
         </div>
       </div>
@@ -439,12 +435,6 @@ function handleClick(event: Event) {
       break;
     case "export-json":
       exportJson();
-      break;
-    case "stop-session":
-      if (sessionId) stopSession(sessionId, nowIso());
-      break;
-    case "backdate-session":
-      if (sessionId) backdateSession(sessionId);
       break;
     case "delete-session":
       if (sessionId) deleteSession(sessionId);
