@@ -71,6 +71,8 @@ Backdate should never fail just because the current resumed segment is shorter t
 | S34 | Completed session starts before local midnight and ends after local midnight | Start/end date fields preserve different local dates; duration, copy output, and totals remain correct. |
 | S35 | Overlapping completed sessions within one project | Sessions are preserved as separate logged windows and project total is cumulative, not de-duplicated. |
 | S36 | Overlapping completed sessions across projects | Project filters and copy output keep each project isolated while All still shows every overlapping session. |
+| S37 | Add a project-level quick note while a session is running | The note is written to that running session and appears in the session row. |
+| S38 | Edit the note from a session row | The edited note persists in local storage, copy output, and saved JSON backup. |
 
 ## Non-Goals
 

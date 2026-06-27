@@ -381,11 +381,11 @@ function renderSessionRow(session: WorkSession) {
       <div class="time-grid">
         <label class="time-field">
           <span>Local start</span>
-          <input type="datetime-local" data-action="edit-session-start" data-session-id="${session.id}" value="${toLocalInputValue(session.startAt)}" />
+          <input type="text" inputmode="numeric" data-action="edit-session-start" data-session-id="${session.id}" value="${toLocalInputValue(session.startAt)}" placeholder="DD/MM/YYYY HH:mm:ss" />
         </label>
         <label class="time-field">
           <span>Local end</span>
-          <input type="datetime-local" data-action="edit-session-end" data-session-id="${session.id}" value="${endValue}" />
+          <input type="text" inputmode="numeric" data-action="edit-session-end" data-session-id="${session.id}" value="${endValue}" placeholder="DD/MM/YYYY HH:mm:ss" />
         </label>
         <div class="time-field">
           <span>UTC start</span>
@@ -934,15 +934,31 @@ function formatDuration(milliseconds: number) {
 
 function toLocalInputValue(iso: string) {
   const date = new Date(iso);
-  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return offsetDate.toISOString().slice(0, 16);
+  return [
+    date.getDate().toString().padStart(2, "0"),
+    (date.getMonth() + 1).toString().padStart(2, "0"),
+    date.getFullYear().toString(),
+  ].join("/") + ` ${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}:${date.getSeconds().toString().padStart(2, "0")}`;
 }
 
 function fromLocalInputValue(value: string) {
   if (!value) {
     return null;
   }
-  return new Date(value).toISOString();
+
+  const legacyValue = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (legacyValue) {
+    const [, year, month, day, hour, minute, second = "0"] = legacyValue;
+    return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)).toISOString();
+  }
+
+  const localValue = value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!localValue) {
+    return null;
+  }
+
+  const [, day, month, year, hour, minute, second = "0"] = localValue;
+  return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)).toISOString();
 }
 
 function escapeHtml(value: string) {

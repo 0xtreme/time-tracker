@@ -152,6 +152,13 @@ async function sessionCount(page: Page) {
   }, storageKey);
 }
 
+async function sessionNotes(page: Page) {
+  return page.evaluate((key) => {
+    const state = JSON.parse(window.localStorage.getItem(key) || "{}");
+    return state.sessions.map((session: { note: string }) => session.note);
+  }, storageKey);
+}
+
 async function themeSetting(page: Page) {
   return page.evaluate((key) => {
     const state = JSON.parse(window.localStorage.getItem(key) || "{}");
@@ -162,8 +169,12 @@ async function themeSetting(page: Page) {
 async function localInputValueForAgo(page: Page, agoMs: number) {
   return page.evaluate((ms) => {
     const date = new Date(Date.now() - ms);
-    const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-    return localDate.toISOString().slice(0, 16);
+    const parts = [
+      date.getDate().toString().padStart(2, "0"),
+      (date.getMonth() + 1).toString().padStart(2, "0"),
+      date.getFullYear().toString(),
+    ];
+    return `${parts.join("/")} ${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}:${date.getSeconds().toString().padStart(2, "0")}`;
   }, agoMs);
 }
 
@@ -307,6 +318,37 @@ test("S11-S12: copy actions respect project filter and timezone mode", async ({ 
   expect(utcClipboardText).toContain("Project 1");
   expect(utcClipboardText).toContain("Project 2");
   expect(utcClipboardText).toContain("UTC");
+});
+
+test("S37-S38: project quick note and session note edits persist into copy and backup", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const projectOne = projectCard(page, "Project 1");
+
+  await projectOne.getByRole("button", { name: "Start" }).click();
+  page.once("dialog", async (dialog) => {
+    expect(dialog.message()).toBe("Session note");
+    await dialog.accept("Project quick note");
+  });
+  await projectOne.getByRole("button", { name: "Note" }).click();
+  await expect(page.locator(".note-input").first()).toHaveValue("Project quick note");
+  expect(await sessionNotes(page)).toContain("Project quick note");
+
+  await page.locator(".note-input").first().fill("Edited session row note");
+  await expect.poll(() => sessionNotes(page)).toContain("Edited session row note");
+
+  await page.getByRole("button", { name: "Copy local" }).click();
+  const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+  expect(clipboardText).toContain("Project\tStart\tEnd\tDuration\tNote");
+  expect(clipboardText).toContain("Edited session row note");
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Save file" }).click(),
+  ]);
+  const path = await download.path();
+  expect(path).toBeTruthy();
+  const backup = JSON.parse(readFileSync(path || "", "utf8"));
+  expect(backup.sessions.some((session: { note: string }) => session.note === "Edited session row note")).toBe(true);
 });
 
 test("S14: uploading an offline backup replaces local state", async ({ page }) => {
@@ -625,8 +667,8 @@ test("S34: completed sessions can cross a local date boundary", async ({ page, c
   ]);
 
   const session = page.locator(".session-card").first();
-  await expect(session.locator('[data-action="edit-session-start"]')).toHaveValue("2026-01-15T23:50");
-  await expect(session.locator('[data-action="edit-session-end"]')).toHaveValue("2026-01-16T00:20");
+  await expect(session.locator('[data-action="edit-session-start"]')).toHaveValue("15/01/2026 23:50:00");
+  await expect(session.locator('[data-action="edit-session-end"]')).toHaveValue("16/01/2026 00:20:00");
   await expect(session.locator('[data-session-duration="cross-midnight"]')).toHaveText("30m 00s");
   expectDurationNear(await stateProjectDurationMs(page, projectOneId), 30 * 60_000);
 
