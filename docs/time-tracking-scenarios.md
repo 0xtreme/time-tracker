@@ -50,6 +50,21 @@ Backdate should never fail just because the current resumed segment is shorter t
 | S13 | Save file | Browser downloads JSON containing projects, sessions, settings, and last seen time. |
 | S14 | Upload file | Imported JSON replaces local state and re-renders projects/sessions. |
 | S15 | Reopen with a stale running session | Recovery banner appears; user can keep running, end at last seen, or end now. |
+| S16 | Add and rename a project | New project appears; renamed project is used in filters, project card, sessions, and copied rows. |
+| S17 | Archive a project with no running session | Project card is hidden; existing session rows remain visible under All and still keep their project name. |
+| S18 | Attempt to archive a running project | Archive is disabled until the project is paused. |
+| S19 | Delete a session row | Session is removed from storage and project total updates. |
+| S20 | Delete one session while a project has multiple sessions | Only the selected session is removed; remaining sessions and total stay correct. |
+| S21 | End all while one or more sessions are running | Every running session gets an end time; no running sessions remain. |
+| S22 | Parallel mode starts multiple running projects | Multiple projects can run simultaneously; switching back to single-active closes all but the newest active session. |
+| S23 | Invalid backdate input | Non-numeric, zero, or negative values do not change sessions and show an error notice. |
+| S24 | Cancel backdate prompt | Sessions are unchanged and no error notice is shown. |
+| S25 | Invalid upload file | Existing state remains unchanged and an import failure notice is shown. |
+| S26 | Theme toggle | Theme changes immediately and persists after reload. |
+| S27 | Recovery keep running | Stale running session remains running and recovery banner disappears. |
+| S28 | Recovery end now | Stale running session is ended at current time and recovery banner disappears. |
+| S29 | Editing a session end before its start | The row duration clamps to zero rather than creating negative time. |
+| S30 | Session row controls | Session rows expose Delete and editable fields only; Pause and Backdate are project-level controls only. |
 
 ## Non-Goals
 

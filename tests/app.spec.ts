@@ -84,6 +84,20 @@ async function runningSessionCount(page: Page) {
   }, storageKey);
 }
 
+async function sessionCount(page: Page) {
+  return page.evaluate((key) => {
+    const state = JSON.parse(window.localStorage.getItem(key) || "{}");
+    return state.sessions.length;
+  }, storageKey);
+}
+
+async function themeSetting(page: Page) {
+  return page.evaluate((key) => {
+    const state = JSON.parse(window.localStorage.getItem(key) || "{}");
+    return state.settings.theme;
+  }, storageKey);
+}
+
 async function localInputValueForAgo(page: Page, agoMs: number) {
   return page.evaluate((ms) => {
     const date = new Date(Date.now() - ms);
@@ -312,4 +326,146 @@ test("S15: reopening with a stale running session shows recovery controls", asyn
   await recoveryPage.getByRole("button", { name: "End at last activity" }).click();
   expect(await runningSessionCount(recoveryPage)).toBe(0);
   await recoveryPage.close();
+});
+
+test("S16-S18: add, rename, and archive project behavior is constrained", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+
+  await page.getByRole("button", { name: "Add project" }).click();
+  const newProject = projectCard(page, "Project 4");
+  await expect(newProject).toBeVisible();
+  await newProject.locator(".project-name").fill("Client Alpha");
+
+  await newProject.getByRole("button", { name: "Start" }).click();
+  await expect(projectCard(page, "Client Alpha").getByRole("button", { name: "Archive" })).toBeDisabled();
+  await projectCard(page, "Client Alpha").getByRole("button", { name: "Pause" }).click();
+  await projectCard(page, "Client Alpha").getByRole("button", { name: "Archive" }).click();
+  await expect(projectCard(page, "Client Alpha")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Copy local" }).click();
+  const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+  expect(clipboardText).toContain("Client Alpha");
+});
+
+test("S19-S20: deleting sessions updates storage and project totals", async ({ page }) => {
+  await seedState(page, [
+    { id: "older", projectId: projectOneId, startAgoMs: 20 * 60_000, endAgoMs: 15 * 60_000 },
+    { id: "newer", projectId: projectOneId, startAgoMs: 10 * 60_000, endAgoMs: 5 * 60_000 },
+  ]);
+  const projectOne = projectCard(page, "Project 1");
+
+  await page.locator(".session-card").first().getByRole("button", { name: "Delete" }).click();
+  expect(await sessionCount(page)).toBe(1);
+  expectDurationNear(await stateProjectDurationMs(page, projectOneId), 5 * 60_000);
+  await expect(projectDuration(projectOne)).toHaveText(nonZeroDuration);
+
+  await page.locator(".session-card").first().getByRole("button", { name: "Delete" }).click();
+  expect(await sessionCount(page)).toBe(0);
+  expectDurationNear(await stateProjectDurationMs(page, projectOneId), 0);
+});
+
+test("S21-S22: end all and parallel mode handle multiple running sessions", async ({ page }) => {
+  const projectOne = projectCard(page, "Project 1");
+  const projectTwo = projectCard(page, "Project 2");
+
+  await page.getByRole("button", { name: "Parallel" }).click();
+  await projectOne.getByRole("button", { name: "Start" }).click();
+  await projectTwo.getByRole("button", { name: "Start" }).click();
+  expect(await runningSessionCount(page)).toBe(2);
+
+  await page.getByRole("button", { name: "Single active" }).click();
+  expect(await runningSessionCount(page)).toBe(1);
+
+  await page.getByRole("button", { name: "Parallel" }).click();
+  await projectOne.getByRole("button", { name: "Resume" }).click();
+  expect(await runningSessionCount(page)).toBe(2);
+  await page.getByRole("button", { name: "End all" }).click();
+  expect(await runningSessionCount(page)).toBe(0);
+});
+
+test("S23-S24: invalid or cancelled backdate leaves running session unchanged", async ({ page }) => {
+  const projectOne = projectCard(page, "Project 1");
+  await projectOne.getByRole("button", { name: "Start" }).click();
+
+  page.once("dialog", async (dialog) => dialog.accept("abc"));
+  await projectOne.getByRole("button", { name: "Backdate" }).click();
+  await expect(page.getByText("Backdate failed. Enter a number greater than 0.")).toBeVisible();
+  expect(await runningSessionCount(page)).toBe(1);
+
+  page.once("dialog", async (dialog) => dialog.dismiss());
+  await projectOne.getByRole("button", { name: "Backdate" }).click();
+  expect(await runningSessionCount(page)).toBe(1);
+});
+
+test("S25: invalid upload preserves current state and shows failure notice", async ({ page }) => {
+  const projectOne = projectCard(page, "Project 1");
+  await projectOne.getByRole("button", { name: "Start" }).click();
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "invalid.json",
+    mimeType: "application/json",
+    buffer: Buffer.from("{not-json"),
+  });
+
+  await expect(page.getByText("Import failed. Choose a JSON export from this tracker.")).toBeVisible();
+  await expect(projectCard(page, "Project 1").getByText(/running/)).toBeVisible();
+  expect(await runningSessionCount(page)).toBe(1);
+});
+
+test("S26: theme toggle persists after reload", async ({ page }) => {
+  await page.locator('[data-action="toggle-theme"]').click();
+  await expect.poll(() => themeSetting(page)).toBe("dark");
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("dark");
+});
+
+test("S27-S28: recovery keep running and end now actions work", async ({ context }) => {
+  const now = Date.now();
+  const staleState = {
+    schemaVersion: 1,
+    projects: [
+      { id: projectOneId, name: "Project 1", createdAt: new Date(now).toISOString(), color: "#2563eb", archived: false },
+    ],
+    sessions: [
+      { id: "stale-active", projectId: projectOneId, startAt: new Date(now - 20 * 60_000).toISOString(), endAt: null, note: "" },
+    ],
+    settings: { timerMode: "exclusive", staleAfterMinutes: 15, theme: "light" },
+    lastSeenAt: new Date(now - 20 * 60_000).toISOString(),
+  };
+
+  const keepPage = await context.newPage();
+  await keepPage.addInitScript(
+    ({ key, value }) => window.localStorage.setItem(key, JSON.stringify(value)),
+    { key: storageKey, value: staleState },
+  );
+  await keepPage.goto("/");
+  await keepPage.getByRole("button", { name: "Keep running" }).click();
+  expect(await runningSessionCount(keepPage)).toBe(1);
+  await keepPage.close();
+
+  const endNowPage = await context.newPage();
+  await endNowPage.addInitScript(
+    ({ key, value }) => window.localStorage.setItem(key, JSON.stringify(value)),
+    { key: storageKey, value: staleState },
+  );
+  await endNowPage.goto("/");
+  await endNowPage.getByRole("button", { name: "End now" }).click();
+  expect(await runningSessionCount(endNowPage)).toBe(0);
+  await endNowPage.close();
+});
+
+test("S29-S30: negative edited durations clamp to zero and session rows avoid duplicate controls", async ({ page }) => {
+  await seedState(page, [
+    { id: "p1-complete", projectId: projectOneId, startAgoMs: 10 * 60_000, endAgoMs: 0 },
+  ]);
+
+  const twentyMinutesAgo = await localInputValueForAgo(page, 20 * 60_000);
+  const endInput = page.locator('[data-action="edit-session-end"]').first();
+  await endInput.fill(twentyMinutesAgo);
+  await endInput.dispatchEvent("change");
+
+  expectDurationNear(await stateProjectDurationMs(page, projectOneId), 0);
+  await expect(page.locator(".session-card").first().getByRole("button", { name: "Delete" })).toBeVisible();
+  await expect(page.locator(".session-card").first().getByRole("button", { name: "Pause" })).toHaveCount(0);
+  await expect(page.locator(".session-card").first().getByRole("button", { name: "Backdate" })).toHaveCount(0);
 });
