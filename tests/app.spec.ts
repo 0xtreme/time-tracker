@@ -365,6 +365,9 @@ test("S16-S18: add, rename, and archive project behavior is constrained", async 
   await page.getByRole("button", { name: "Copy local" }).click();
   const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
   expect(clipboardText).toContain("Client Alpha");
+
+  await page.locator(".archived-projects").getByRole("button", { name: "Restore" }).click();
+  await expect(projectCard(page, "Client Alpha")).toBeVisible();
 });
 
 test("S19-S20: deleting sessions updates storage and project totals", async ({ page }) => {

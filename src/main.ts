@@ -178,6 +178,7 @@ function render() {
           <div class="project-list">
             ${state.projects.filter((project) => !project.archived).map(renderProjectCard).join("")}
           </div>
+          ${renderArchivedProjects()}
         </aside>
 
         <section class="session-panel" aria-label="Session log">
@@ -272,6 +273,27 @@ function renderProjectCard(project: Project) {
         <button class="ghost" data-action="archive-project" data-project-id="${project.id}" ${active ? "disabled" : ""}>Archive</button>
       </div>
     </article>
+  `;
+}
+
+function renderArchivedProjects() {
+  const archivedProjects = state.projects.filter((project) => project.archived);
+  if (!archivedProjects.length) {
+    return "";
+  }
+
+  return `
+    <section class="archived-projects" aria-label="Archived projects">
+      <h3>Archived</h3>
+      <div class="archived-list">
+        ${archivedProjects.map((project) => `
+          <article class="archived-project" style="--accent:${project.color}">
+            <span class="project-pill" style="--accent:${project.color}">${escapeHtml(project.name)}</span>
+            <button data-action="restore-project" data-project-id="${project.id}">Restore</button>
+          </article>
+        `).join("")}
+      </div>
+    </section>
   `;
 }
 
@@ -402,6 +424,9 @@ function handleClick(event: Event) {
     case "archive-project":
       if (projectId) archiveProject(projectId);
       break;
+    case "restore-project":
+      if (projectId) restoreProject(projectId);
+      break;
     case "start-project":
       if (projectId) startProject(projectId);
       break;
@@ -521,6 +546,15 @@ function archiveProject(projectId: string) {
   if (selectedProjectId === projectId) {
     selectedProjectId = "all";
   }
+  saveState();
+  render();
+}
+
+function restoreProject(projectId: string) {
+  const project = getProject(projectId);
+  if (!project) return;
+
+  project.archived = false;
   saveState();
   render();
 }
