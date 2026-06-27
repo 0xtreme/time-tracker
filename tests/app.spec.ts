@@ -6,6 +6,7 @@ const projectOneId = "project_1";
 const projectTwoId = "project_2";
 const projectThreeId = "project_3";
 const nonZeroDuration = /(?:[1-9]\d*h|[1-9]\d*m|[1-9]\d*s)/;
+const dayMs = 24 * 60 * 60 * 1000;
 
 type SeedSession = {
   id: string;
@@ -122,6 +123,21 @@ function localIso(year: number, monthIndex: number, day: number, hour: number, m
   return new Date(year, monthIndex, day, hour, minute).toISOString();
 }
 
+function parseCounterSeconds(value: string) {
+  const days = Number(value.match(/(\d+)d/)?.[1] || 0);
+  const hours = Number(value.match(/(\d+)h/)?.[1] || 0);
+  const minutes = Number(value.match(/(\d+)m/)?.[1] || 0);
+  const seconds = Number(value.match(/(\d+)s/)?.[1] || 0);
+  return days * 86_400 + hours * 3600 + minutes * 60 + seconds;
+}
+
+function secondsUntilNextMondayUtc(now = new Date()) {
+  const utcDay = now.getUTCDay();
+  const daysUntilMonday = (8 - utcDay) % 7 || 7;
+  const cutoff = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysUntilMonday, 0, 0, 0, 0);
+  return Math.floor(Math.max(0, cutoff - now.getTime()) / 1000);
+}
+
 async function stateProjectDurationMs(page: Page, projectId: string) {
   return page.evaluate(
     ({ key, id }) => {
@@ -209,6 +225,19 @@ test("S01-S03: pause and resume keep cumulative project time", async ({ page }) 
   await projectOne.getByRole("button", { name: "Resume" }).click();
   await expect(projectOne.getByText(/running 0m/)).toBeVisible();
   await expect(projectDuration(projectOne)).toHaveText(nonZeroDuration);
+});
+
+test("S40-S41: top counters show weekly cutoff and seven-day active run warning", async ({ page }) => {
+  await seedState(page, [
+    { id: "old-active", projectId: projectOneId, startAgoMs: 8 * dayMs + 2 * 60 * 60_000, endAgoMs: null },
+  ]);
+
+  const cutoffText = await page.locator("[data-week-cutoff]").textContent();
+  expect(cutoffText || "").toMatch(/^(\d+d \d{2}h \d{2}m \d{2}s|\d+h \d{2}m \d{2}s)$/);
+  expect(Math.abs(parseCounterSeconds(cutoffText || "") - secondsUntilNextMondayUtc())).toBeLessThanOrEqual(2);
+  await expect(page.locator("[data-longest-run]")).toHaveText("8d 02h 00m");
+  await expect(page.getByLabel("Seven day run warning")).toContainText("Project 1 has been running for 8d 02h");
+  await expect(page.getByLabel("Seven day run warning")).toContainText("7-day running window");
 });
 
 test("S04-S05: single-active switching preserves both project totals", async ({ page }) => {

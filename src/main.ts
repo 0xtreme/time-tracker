@@ -37,6 +37,7 @@ type AppState = {
 
 const STORAGE_KEY = "time-session-tracker:v1";
 const HEARTBEAT_MS = 30_000;
+const RUN_LIMIT_MS = 7 * 24 * 60 * 60 * 1000;
 const PROJECT_COLORS = ["#2563eb", "#0f766e", "#9333ea", "#c2410c", "#be123c", "#4d7c0f"];
 
 const appElement = document.querySelector<HTMLDivElement>("#app");
@@ -136,6 +137,7 @@ function touchLastSeen() {
 function render() {
   document.documentElement.dataset.theme = state.settings.theme;
   const activeSessions = getActiveSessions();
+  const longestActiveRunMs = longestActiveRunDurationMs();
   const totalToday = state.sessions
     .filter((session) => isSameLocalDay(session.startAt, nowIso()))
     .reduce((sum, session) => sum + sessionDurationMs(session), 0);
@@ -149,6 +151,8 @@ function render() {
         </div>
         <div class="topbar__stats" aria-label="Current tracker summary">
           <span>${activeSessions.length} running</span>
+          <span><strong data-week-cutoff>${formatCountdown(msUntilNextWeeklyCutoffUtc())}</strong> to week cutoff</span>
+          <span class="${longestActiveRunMs >= RUN_LIMIT_MS ? "is-warning" : ""}"><strong data-longest-run>${activeSessions.length ? formatLongDuration(longestActiveRunMs) : "None"}</strong> active run</span>
           <span><strong data-total-today>${formatDuration(totalToday)}</strong> today</span>
           <button
             class="theme-toggle"
@@ -162,6 +166,7 @@ function render() {
       </header>
 
       ${notice ? `<div class="notice">${escapeHtml(notice)}</div>` : ""}
+      ${renderRunLimitWarning()}
       ${renderRecoveryBanner()}
 
       <section class="workspace">
@@ -337,6 +342,27 @@ function renderRecoveryBanner() {
         <button data-action="stop-at-last-seen">End at last activity</button>
         <button class="primary" data-action="stop-at-now">End now</button>
       </div>
+    </section>
+  `;
+}
+
+function renderRunLimitWarning() {
+  const overdueSession = getActiveSessions()
+    .map((session) => ({ session, durationMs: sessionDurationMs(session) }))
+    .filter(({ durationMs }) => durationMs >= RUN_LIMIT_MS)
+    .sort((a, b) => b.durationMs - a.durationMs)[0];
+
+  if (!overdueSession) {
+    return "";
+  }
+
+  const project = getProject(overdueSession.session.projectId);
+  const name = project?.name || "A project";
+
+  return `
+    <section class="warning-banner" aria-label="Seven day run warning">
+      <strong>${escapeHtml(name)} has been running for ${formatLongDuration(overdueSession.durationMs)}.</strong>
+      <span>Finish or pause it before a 7-day running window causes expiry issues.</span>
     </section>
   `;
 }
@@ -839,10 +865,28 @@ function projectDurationMs(projectId: string) {
     .reduce((sum, session) => sum + sessionDurationMs(session), 0);
 }
 
+function longestActiveRunDurationMs() {
+  return getActiveSessions().reduce((longest, session) => Math.max(longest, sessionDurationMs(session)), 0);
+}
+
 function renderTimerValues() {
+  const activeSessions = getActiveSessions();
+  const longestActiveRunMs = longestActiveRunDurationMs();
   const totalToday = state.sessions
     .filter((session) => isSameLocalDay(session.startAt, nowIso()))
     .reduce((sum, session) => sum + sessionDurationMs(session), 0);
+
+  const weekCutoffElement = app.querySelector<HTMLElement>("[data-week-cutoff]");
+  if (weekCutoffElement) {
+    weekCutoffElement.textContent = formatCountdown(msUntilNextWeeklyCutoffUtc());
+  }
+
+  const longestRunElement = app.querySelector<HTMLElement>("[data-longest-run]");
+  if (longestRunElement) {
+    longestRunElement.textContent = activeSessions.length ? formatLongDuration(longestActiveRunMs) : "None";
+    longestRunElement.parentElement?.classList.toggle("is-warning", longestActiveRunMs >= RUN_LIMIT_MS);
+  }
+
   const totalTodayElement = app.querySelector<HTMLElement>("[data-total-today]");
   if (totalTodayElement) {
     totalTodayElement.textContent = formatDuration(totalToday);
@@ -919,6 +963,40 @@ function formatUtcDateTime(iso: string) {
     second: "2-digit",
     hour12: false,
   }).format(new Date(iso)).replace(",", "") + " UTC";
+}
+
+function msUntilNextWeeklyCutoffUtc(now = new Date()) {
+  const utcDay = now.getUTCDay();
+  const daysUntilMonday = (8 - utcDay) % 7 || 7;
+  const cutoff = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysUntilMonday, 0, 0, 0, 0);
+  return Math.max(0, cutoff - now.getTime());
+}
+
+function formatCountdown(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (days) {
+    return `${days}d ${hours.toString().padStart(2, "0")}h ${minutes.toString().padStart(2, "0")}m ${seconds.toString().padStart(2, "0")}s`;
+  }
+
+  return `${hours}h ${minutes.toString().padStart(2, "0")}m ${seconds.toString().padStart(2, "0")}s`;
+}
+
+function formatLongDuration(milliseconds: number) {
+  const totalMinutes = Math.max(0, Math.floor(milliseconds / 60_000));
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days) {
+    return `${days}d ${hours.toString().padStart(2, "0")}h ${minutes.toString().padStart(2, "0")}m`;
+  }
+
+  return `${hours}h ${minutes.toString().padStart(2, "0")}m`;
 }
 
 function formatDuration(milliseconds: number) {

@@ -217,6 +217,12 @@ p {
   white-space: nowrap;
 }
 
+.topbar__stats span.is-warning {
+  border-color: color-mix(in srgb, var(--danger) 48%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  color: var(--danger);
+}
+
 .theme-toggle {
   display: inline-grid;
   place-items: center;
@@ -242,7 +248,8 @@ p {
 }
 
 .notice,
-.recovery {
+.recovery,
+.warning-banner {
   margin-bottom: 14px;
   border: 1px solid color-mix(in srgb, var(--primary) 36%, var(--border));
   border-radius: 8px;
@@ -254,12 +261,22 @@ p {
   padding: 12px 14px;
 }
 
-.recovery {
+.recovery,
+.warning-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   padding: 14px;
+}
+
+.warning-banner {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  background: color-mix(in srgb, var(--danger) 9%, var(--surface));
+}
+
+.warning-banner span {
+  color: var(--muted);
 }
 
 .recovery p {
@@ -676,7 +693,8 @@ p {
   .topbar,
   .panel-heading,
   .session-toolbar,
-  .recovery {
+  .recovery,
+  .warning-banner {
     align-items: stretch;
     flex-direction: column;
   }

@@ -74,6 +74,8 @@ Backdate should never fail just because the current resumed segment is shorter t
 | S37 | Add a project-level quick note while a session is running | The note is written to that running session and appears in the session row. |
 | S38 | Edit the note from a session row | The edited note persists in local storage, copy output, and saved JSON backup. |
 | S39 | Running session end fields | Local end and UTC end both show `Running`; local end does not show an empty timestamp-format placeholder. |
+| S40 | Weekly cutoff counter | Topbar shows a live countdown to the next Monday 00:00 UTC weekly cutoff. |
+| S41 | Seven-day active run warning | Any session running for seven days or longer shows a topbar warning state and a visible warning banner. |
 
 ## Non-Goals
 
