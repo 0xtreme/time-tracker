@@ -15,6 +15,26 @@ type SeedSession = {
   note?: string;
 };
 
+function staleRunningState(now = Date.now()) {
+  return {
+    schemaVersion: 1,
+    projects: [
+      { id: projectOneId, name: "Project 1", createdAt: new Date(now).toISOString(), color: "#2563eb", archived: false },
+    ],
+    sessions: [
+      {
+        id: "stale-active",
+        projectId: projectOneId,
+        startAt: new Date(now - 20 * 60_000).toISOString(),
+        endAt: null,
+        note: "",
+      },
+    ],
+    settings: { timerMode: "exclusive", staleAfterMinutes: 15, theme: "light" },
+    lastSeenAt: new Date(now - 20 * 60_000).toISOString(),
+  };
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await page.evaluate((key) => window.localStorage.removeItem(key), storageKey);
@@ -420,18 +440,7 @@ test("S26: theme toggle persists after reload", async ({ page }) => {
 });
 
 test("S27-S28: recovery keep running and end now actions work", async ({ context }) => {
-  const now = Date.now();
-  const staleState = {
-    schemaVersion: 1,
-    projects: [
-      { id: projectOneId, name: "Project 1", createdAt: new Date(now).toISOString(), color: "#2563eb", archived: false },
-    ],
-    sessions: [
-      { id: "stale-active", projectId: projectOneId, startAt: new Date(now - 20 * 60_000).toISOString(), endAt: null, note: "" },
-    ],
-    settings: { timerMode: "exclusive", staleAfterMinutes: 15, theme: "light" },
-    lastSeenAt: new Date(now - 20 * 60_000).toISOString(),
-  };
+  const staleState = staleRunningState();
 
   const keepPage = await context.newPage();
   await keepPage.addInitScript(
@@ -468,4 +477,90 @@ test("S29-S30: negative edited durations clamp to zero and session rows avoid du
   await expect(page.locator(".session-card").first().getByRole("button", { name: "Delete" })).toBeVisible();
   await expect(page.locator(".session-card").first().getByRole("button", { name: "Pause" })).toHaveCount(0);
   await expect(page.locator(".session-card").first().getByRole("button", { name: "Backdate" })).toHaveCount(0);
+});
+
+test("S31: uploading a backup while recovery is visible replaces stale local state", async ({ context }) => {
+  const page = await context.newPage();
+  await page.addInitScript(
+    ({ key, value }) => window.localStorage.setItem(key, JSON.stringify(value)),
+    { key: storageKey, value: staleRunningState() },
+  );
+  await page.goto("/");
+  await expect(page.getByText("1 session was running while this tab was away.")).toBeVisible();
+
+  const now = Date.now();
+  const backup = {
+    schemaVersion: 1,
+    projects: [
+      { id: projectTwoId, name: "Uploaded After Reopen", createdAt: new Date(now).toISOString(), color: "#0f766e", archived: false },
+    ],
+    sessions: [
+      {
+        id: "uploaded-session",
+        projectId: projectTwoId,
+        startAt: new Date(now - 8 * 60_000).toISOString(),
+        endAt: new Date(now - 3 * 60_000).toISOString(),
+        note: "Uploaded after reopen",
+      },
+    ],
+    settings: { timerMode: "exclusive", staleAfterMinutes: 15, theme: "light" },
+    lastSeenAt: new Date(now).toISOString(),
+  };
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "after-reopen.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(backup)),
+  });
+
+  await expect(page.getByText("1 session was running while this tab was away.")).toHaveCount(0);
+  await expect(page.locator('input[value="Uploaded After Reopen"]')).toBeVisible();
+  await expect(page.locator('input[value="Uploaded after reopen"]')).toBeVisible();
+  expect(await runningSessionCount(page)).toBe(0);
+  await page.close();
+});
+
+test("S32: saved backup can restore state after reload and local changes", async ({ page }) => {
+  await seedState(page, [
+    { id: "original", projectId: projectOneId, startAgoMs: 12 * 60_000, endAgoMs: 6 * 60_000, note: "Round trip note" },
+  ]);
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Save file" }).click(),
+  ]);
+  const downloadPath = await download.path();
+  expect(downloadPath).toBeTruthy();
+
+  await projectCard(page, "Project 2").getByRole("button", { name: "Start" }).click();
+  await page.reload();
+  await expect(projectCard(page, "Project 2").getByText(/running/)).toBeVisible();
+
+  await page.locator('input[type="file"]').setInputFiles(downloadPath || "");
+  await expect(page.locator('input[value="Round trip note"]')).toBeVisible();
+  expect(await runningSessionCount(page)).toBe(0);
+  expect(await stateProjectDurationMs(page, projectTwoId)).toBe(0);
+});
+
+test("S33: invalid upload during recovery preserves stale running state", async ({ context }) => {
+  const page = await context.newPage();
+  await page.addInitScript(
+    ({ key, value }) => window.localStorage.setItem(key, JSON.stringify(value)),
+    { key: storageKey, value: staleRunningState() },
+  );
+  await page.goto("/");
+  await expect(page.getByText("1 session was running while this tab was away.")).toBeVisible();
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "invalid-recovery.json",
+    mimeType: "application/json",
+    buffer: Buffer.from("{bad-json"),
+  });
+
+  await expect(page.getByText("Import failed. Choose a JSON export from this tracker.")).toBeVisible();
+  await expect(page.getByText("1 session was running while this tab was away.")).toBeVisible();
+  expect(await runningSessionCount(page)).toBe(1);
+  await page.getByRole("button", { name: "End now" }).click();
+  expect(await runningSessionCount(page)).toBe(0);
+  await page.close();
 });

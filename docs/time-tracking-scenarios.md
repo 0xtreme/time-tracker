@@ -65,6 +65,9 @@ Backdate should never fail just because the current resumed segment is shorter t
 | S28 | Recovery end now | Stale running session is ended at current time and recovery banner disappears. |
 | S29 | Editing a session end before its start | The row duration clamps to zero rather than creating negative time. |
 | S30 | Session row controls | Session rows expose Delete and editable fields only; Pause and Backdate are project-level controls only. |
+| S31 | Upload a backup while stale recovery banner is visible | Imported file replaces stale local state and recovery banner disappears if imported state is not stale. |
+| S32 | Save, reopen, and upload saved backup | Saved JSON can restore projects/sessions after local state changes or reload. |
+| S33 | Invalid upload while stale recovery banner is visible | Existing stale running state remains intact and recovery controls still work. |
 
 ## Non-Goals
 
