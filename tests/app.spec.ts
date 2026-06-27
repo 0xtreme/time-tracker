@@ -196,6 +196,10 @@ test("S01-S03: pause and resume keep cumulative project time", async ({ page }) 
 
   await projectOne.getByRole("button", { name: "Start" }).click();
   await expect(projectOne.getByText("running")).toBeVisible();
+  const runningSession = page.locator(".session-card").first();
+  await expect(runningSession.locator(".time-field").filter({ hasText: "Local end" }).locator("output")).toHaveText("Running");
+  await expect(runningSession.locator(".time-field").filter({ hasText: "UTC end" }).locator("output")).toHaveText("Running");
+  await expect(runningSession.locator('[data-action="edit-session-end"]')).toHaveCount(0);
   await page.waitForTimeout(1100);
 
   await projectOne.getByRole("button", { name: "Pause" }).click();

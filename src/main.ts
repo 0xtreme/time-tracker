@@ -385,7 +385,9 @@ function renderSessionRow(session: WorkSession) {
         </label>
         <label class="time-field">
           <span>Local end</span>
-          <input type="text" inputmode="numeric" data-action="edit-session-end" data-session-id="${session.id}" value="${endValue}" placeholder="DD/MM/YYYY HH:mm:ss" />
+          ${session.endAt
+            ? `<input type="text" inputmode="numeric" data-action="edit-session-end" data-session-id="${session.id}" value="${endValue}" placeholder="DD/MM/YYYY HH:mm:ss" />`
+            : "<output>Running</output>"}
         </label>
         <div class="time-field">
           <span>UTC start</span>

@@ -73,6 +73,7 @@ Backdate should never fail just because the current resumed segment is shorter t
 | S36 | Overlapping completed sessions across projects | Project filters and copy output keep each project isolated while All still shows every overlapping session. |
 | S37 | Add a project-level quick note while a session is running | The note is written to that running session and appears in the session row. |
 | S38 | Edit the note from a session row | The edited note persists in local storage, copy output, and saved JSON backup. |
+| S39 | Running session end fields | Local end and UTC end both show `Running`; local end does not show an empty timestamp-format placeholder. |
 
 ## Non-Goals
 
